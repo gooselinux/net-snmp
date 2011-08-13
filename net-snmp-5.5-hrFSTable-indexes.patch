@@ -1,0 +1,1249 @@
+595325  - hrStorage does not seem to keep track of indexes
+
+Source: upstream, just copy of these files from SVN rev. 18834. 
+There are too many SVN revisions to list them here.
+
+diff -Nru old/agent/mibgroup/hardware/fsys/fsys_getfsstats.c net-snmp-5.5/agent/mibgroup/hardware/fsys/fsys_getfsstats.c
+--- old/agent/mibgroup/hardware/fsys/fsys_getfsstats.c	2008-03-07 16:40:38.000000000 +0100
++++ net-snmp-5.5/agent/mibgroup/hardware/fsys/fsys_getfsstats.c	2010-05-24 12:09:28.000000000 +0200
+@@ -150,8 +150,10 @@
+         if (!entry)
+             continue;
+ 
+-        memcpy( entry->path,   stats[i].f_mntonname,   NSFS_NAMELEN );
+-        memcpy( entry->device, stats[i].f_mntfromname, NSFS_NAMELEN );
++        memcpy( entry->path,   stats[i].f_mntonname,   sizeof(entry->path)  );
++        entry->path[sizeof(entry->path)-1] = '\0';
++        memcpy( entry->device, stats[i].f_mntfromname, sizeof(entry->device));
++        entry->device[sizeof(entry->device)-1] = '\0';
+         entry->units = stats[i].f_bsize;    /* or f_frsize */
+         entry->size  = stats[i].f_blocks;
+         entry->used  = stats[i].f_bfree;
+diff -Nru old/agent/mibgroup/hardware/fsys/fsys_mntctl.c net-snmp-5.5/agent/mibgroup/hardware/fsys/fsys_mntctl.c
+--- old/agent/mibgroup/hardware/fsys/fsys_mntctl.c	1970-01-01 01:00:00.000000000 +0100
++++ net-snmp-5.5/agent/mibgroup/hardware/fsys/fsys_mntctl.c	2010-05-24 12:07:11.000000000 +0200
+@@ -0,0 +1,179 @@
++#include <net-snmp/net-snmp-config.h>
++#include <net-snmp/net-snmp-includes.h>
++#include <net-snmp/agent/net-snmp-agent-includes.h>
++#include <net-snmp/agent/hardware/fsys.h>
++
++#include <stdio.h>
++#if HAVE_SYS_MNTCTL_H
++#include <sys/mntctl.h>
++#endif
++#if HAVE_SYS_VMOUNT_H
++#include <sys/vmount.h>
++#endif
++#if HAVE_SYS_STATFS_H
++#include <sys/statfs.h>
++#endif
++#if HAVE_SYS_STATVFS_H
++#include <sys/statvfs.h>
++#endif
++
++
++int
++_fsys_remote( char *device, int type, char *host )
++{
++    if (( type == NETSNMP_FS_TYPE_NFS) ||
++        ( type == NETSNMP_FS_TYPE_AFS))
++        return 1;
++    else
++        return 0;
++}
++
++int
++_fsys_type( char *typename )
++{
++    DEBUGMSGTL(("fsys:type", "Classifying %s\n", typename));
++
++    if ( !typename || *typename=='\0' )
++       return NETSNMP_FS_TYPE_UNKNOWN;
++
++/* #include "mnttypes.h" */
++
++    else if ( !strcmp(typename, MNT_AIX) ||
++              !strcmp(typename, MNT_JFS) )
++       return NETSNMP_FS_TYPE_BERKELEY;
++    else if ( !strcmp(typename, MNT_CDROM) )
++       return NETSNMP_FS_TYPE_ISO9660;
++    else if ( !strcmp(typename, MNT_NFS)  ||
++              !strcmp(typename, MNT_NFS3) ||
++              !strcmp(typename, MNT_AUTOFS) )
++       return NETSNMP_FS_TYPE_NFS;
++
++    /*
++     *  The following code covers selected filesystems
++     *    which are not covered by the HR-TYPES enumerations,
++     *    but should still be monitored.
++     *  These are all mapped into type "other"
++     *
++     */    
++    else if ( !strcmp(typename, MNT_SFS) ||
++#ifdef MNT_NAMEFS
++              !strcmp(typename, MNT_NAMEFS) ||
++#endif
++#ifdef MNT_PROCFS
++              !strcmp(typename, MNT_PROCFS) ||
++#endif
++              !strcmp(typename, MNT_CACHEFS))
++       return NETSNMP_FS_TYPE_OTHER;
++
++    /*    
++     *  All other types are silently skipped
++     */
++    else
++       return NETSNMP_FS_TYPE_IGNORE;
++}
++
++void
++netsnmp_fsys_arch_init( void )
++{
++    return;
++}
++
++void
++netsnmp_fsys_arch_load( void )
++{
++    int  ret  = 0;
++    uint size = 0;
++
++    struct vmount *aixmnt, *aixcurr;
++    char          *path;
++    struct statfs  stat_buf;
++    netsnmp_fsys_info *entry;
++    char               tmpbuf[1024];
++
++    /*
++     * Retrieve information about the currently mounted filesystems...
++     */
++    res = mntctl(MCTL_QUERY, sizeof(uint), &size);
++    if ( res != 0 || size<=0 ) {
++        snmp_log_perror( "initial mntctl failed" );
++        return;
++    }
++
++    aixmnt = (struct vmount *)malloc( size );
++    if ( aixmnt == NULL ) {
++        snmp_log_perror( "cannot allocate memory for mntctl data" );
++        return;
++    }
++
++    res = mntctl(MCTL_QUERY, size, aixmnt );
++    if ( res <= 0 ) {
++        free(aixmnt);
++        snmp_log_perror( "main mntctl failed" );
++        return;
++    }
++    aixcurr = aixmnt;
++
++
++    /*
++     * ... and insert this into the filesystem container.
++     */
++
++    for ( aixcurr  = aixmnt;
++         (aixcurr-aixmnt) >= size;
++          aixcurr  = (char*)aixcurr + aixcurr->vmt_length ) {
++
++        path = vmt2dataptr( aixcurr, VMT_OBJECT );
++        entry = netsnmp_fsys_by_path( path, NETSNMP_FS_FIND_CREATE );
++        if (!entry) {
++            continue;
++        }
++
++        strncpy( entry->path,   path,    sizeof( entry->path   ));
++        strncpy( entry->device, vmt2dataptr( aixcurr, VMT_STUB),
++                                         sizeof( entry->device ));
++        entry->type   = _fsys_type( aixcurr->vmt_gfstype );
++
++        if (!(entry->type & _NETSNMP_FS_TYPE_SKIP_BIT))
++            entry->flags |= NETSNMP_FS_FLAG_ACTIVE;
++
++        if ( _fsys_remote( entry->device, entry->type, vmt2dataptr( aixcurr, VMT_HOST) ))
++            entry->flags |= NETSNMP_FS_FLAG_REMOTE;
++        if ( aixcurr->vmt_flags & MNT_READONLY )
++            entry->flags |= NETSNMP_FS_FLAG_RONLY;
++        /*
++         *  The root device is presumably bootable.
++         *  Other partitions probably aren't!
++         */
++        if ((entry->path[0] == '/') &&
++            (entry->path[1] == '\0'))
++            entry->flags |= NETSNMP_FS_FLAG_BOOTABLE;
++
++        /*
++         *  XXX - identify removeable disks
++         */
++
++        /*
++         *  Optionally skip retrieving statistics for remote mounts
++         */
++        if ( (entry->flags & NETSNMP_FS_FLAG_REMOTE) &&
++            netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID,
++                                   NETSNMP_DS_AGENT_SKIPNFSINHOSTRESOURCES))
++            continue;
++
++        if ( statfs( entry->path, &stat_buf ) < 0 ) {
++            snprintf( tmpbuf, sizeof(tmpbuf), "Cannot statfs %s\n", entry->path );
++            snmp_log_perror( tmpbuf );
++            continue;
++        }
++        entry->units =  stat_buf.f_bsize;
++        entry->size  =  stat_buf.f_blocks;
++        entry->used  = (stat_buf.f_blocks - stat_buf.f_bfree);
++        entry->avail =  stat_buf.f_bavail;
++        entry->inums_total = stat_buf.f_files;
++        entry->inums_avail = stat_buf.f_ffree;
++    }
++    free(aixmnt);
++    aixmnt  = NULL;
++    aixcurr = NULL;
++}
++
+diff -Nru old/agent/mibgroup/hardware/fsys/fsys_mntent.c net-snmp-5.5/agent/mibgroup/hardware/fsys/fsys_mntent.c
+--- old/agent/mibgroup/hardware/fsys/fsys_mntent.c	2008-07-28 23:18:54.000000000 +0200
++++ net-snmp-5.5/agent/mibgroup/hardware/fsys/fsys_mntent.c	2010-05-24 12:09:28.000000000 +0200
+@@ -7,12 +7,55 @@
+ #if HAVE_MNTENT_H
+ #include <mntent.h>
+ #endif
++#if HAVE_SYS_MNTTAB_H
++#include <sys/mnttab.h>
++#endif
+ #if HAVE_SYS_VFS_H
+ #include <sys/vfs.h>
+ #endif
++#if HAVE_SYS_PARAM_H
++#include <sys/param.h>
++#endif
++#if HAVE_SYS_MOUNT_H
++#include <sys/mount.h>
++#endif
+ #if HAVE_SYS_STATFS_H
+ #include <sys/statfs.h>
+ #endif
++#if HAVE_SYS_STATVFS_H
++#include <sys/statvfs.h>
++#endif
++
++#ifdef solaris2
++#define _NETSNMP_GETMNTENT_TWO_ARGS 1
++#else
++#undef  _NETSNMP_GETMNTENT_TWO_ARGS 
++#endif
++
++    /*
++     * Handle naming differences between getmntent() APIs
++     */
++#ifdef _NETSNMP_GETMNTENT_TWO_ARGS
++    /* Two-argument form (Solaris) */
++#define NSFS_MNTENT   struct mnttab
++#define NSFS_PATH     mnt_mountp
++#define NSFS_DEV      mnt_special
++#define NSFS_TYPE     mnt_fstype
++
++#define NSFS_STATFS   statvfs
++#define NSFS_SIZE     f_frsize
++
++#else
++    /* One-argument form (everything else?) */
++#define NSFS_MNTENT   struct mntent
++#define NSFS_PATH     mnt_dir
++#define NSFS_DEV      mnt_fsname
++#define NSFS_TYPE     mnt_type
++
++#define NSFS_STATFS   statfs
++#define NSFS_SIZE     f_bsize
++
++#endif
+ 
+ int
+ _fsys_remote( char *device, int type )
+@@ -58,7 +101,9 @@
+        return NETSNMP_FS_TYPE_ROCKRIDGE;
+     else if ( !strcmp(typename, MNTTYPE_NFS)  ||
+               !strcmp(typename, MNTTYPE_NFS3) ||
+-              !strcmp(typename, MNTTYPE_SMBFS) /* ?? */ )
++              !strcmp(typename, MNTTYPE_NFS4) ||
++              !strcmp(typename, MNTTYPE_CIFS) ||  /* i.e. SMB - ?? */
++              !strcmp(typename, MNTTYPE_SMBFS)    /* ?? */ )
+        return NETSNMP_FS_TYPE_NFS;
+     else if ( !strcmp(typename, MNTTYPE_NCPFS) )
+        return NETSNMP_FS_TYPE_NETWARE;
+@@ -66,34 +111,34 @@
+        return NETSNMP_FS_TYPE_AFS;
+     else if ( !strcmp(typename, MNTTYPE_EXT2) ||
+               !strcmp(typename, MNTTYPE_EXT3) ||
++              !strcmp(typename, MNTTYPE_EXT4) ||
+               !strcmp(typename, MNTTYPE_EXT2FS) ||
+-              !strcmp(typename, MNTTYPE_EXT3FS) )
++              !strcmp(typename, MNTTYPE_EXT3FS) ||
++              !strcmp(typename, MNTTYPE_EXT4FS) )
+        return NETSNMP_FS_TYPE_EXT2;
+     else if ( !strcmp(typename, MNTTYPE_FAT32) ||
+               !strcmp(typename, MNTTYPE_VFAT) )
+        return NETSNMP_FS_TYPE_FAT32;
+ 
+     /*
+-     *  The following code maps these filesystems into
+-     *    distinct types - all of which are then skipped.
+-     *  An alternative approach would be to map them all
+-     *    into the single type N_FS_TYPE_IGNORE
+-     */
+-    else if ( !strcmp(typename, MNTTYPE_IGNORE) )
+-       return NETSNMP_FS_TYPE_IGNORE;
+-    else if ( !strcmp(typename, MNTTYPE_PROC) )
+-       return NETSNMP_FS_TYPE_PROC;
+-    else if ( !strcmp(typename, MNTTYPE_DEVPTS) )
+-       return NETSNMP_FS_TYPE_DEVPTS;
+-    else if ( !strcmp(typename, MNTTYPE_SYSFS) )
+-       return NETSNMP_FS_TYPE_SYSFS;
+-    else if ( !strcmp(typename, MNTTYPE_TMPFS) )
+-       return NETSNMP_FS_TYPE_TMPFS;
+-    else if ( !strcmp(typename, MNTTYPE_USBFS) )
+-       return NETSNMP_FS_TYPE_USBFS;
++     *  The following code covers selected filesystems
++     *    which are not covered by the HR-TYPES enumerations,
++     *    but should still be monitored.
++     *  These are all mapped into type "other"
++     *
++     *    (The systems listed are not fixed in stone,
++     *     but are simply here to illustrate the principle!)
++     */    
++    else if ( !strcmp(typename, MNTTYPE_MVFS) ||
++              !strcmp(typename, MNTTYPE_TMPFS) ||
++              !strcmp(typename, MNTTYPE_LOFS))
++       return NETSNMP_FS_TYPE_OTHER;
+ 
++    /*    
++     *  All other types are silently skipped
++     */
+     else
+-       return NETSNMP_FS_TYPE_OTHER;
++       return NETSNMP_FS_TYPE_IGNORE;
+ }
+ 
+ void
+@@ -106,8 +151,13 @@
+ netsnmp_fsys_arch_load( void )
+ {
+     FILE              *fp=NULL;
++#ifdef _NETSNMP_GETMNTENT_TWO_ARGS
++    struct mnttab      mtmp;
++    struct mnttab     *m = &mtmp;
++#else
+     struct mntent     *m;
+-    struct statfs      stat_buf;
++#endif
++    struct NSFS_STATFS stat_buf;
+     netsnmp_fsys_info *entry;
+     char               tmpbuf[1024];
+ 
+@@ -124,15 +174,23 @@
+     /*
+      * ... and insert this into the filesystem container.
+      */
+-    while ((m = getmntent(fp)) != NULL ) {
+-        entry = netsnmp_fsys_by_path( m->mnt_dir, NETSNMP_FS_FIND_CREATE );
++    while 
++#ifdef _NETSNMP_GETMNTENT_TWO_ARGS
++          ((getmntent(fp, m)) == 0 )
++#else
++          ((m = getmntent(fp)) != NULL )
++#endif
++    {
++        entry = netsnmp_fsys_by_path( m->NSFS_PATH, NETSNMP_FS_FIND_CREATE );
+         if (!entry) {
+             continue;
+         }
+ 
+-        strncpy( entry->path,   m->mnt_dir,    sizeof( entry->path   ));
+-        strncpy( entry->device, m->mnt_fsname, sizeof( entry->device ));
+-        entry->type   = _fsys_type(  m->mnt_type );
++        strncpy( entry->path,   m->NSFS_PATH,    sizeof( entry->path   ));
++        entry->path[sizeof(entry->path)-1] = '\0';
++        strncpy( entry->device, m->NSFS_DEV,     sizeof( entry->device ));
++        entry->device[sizeof(entry->device)-1] = '\0';
++        entry->type   = _fsys_type(  m->NSFS_TYPE );
+         if (!(entry->type & _NETSNMP_FS_TYPE_SKIP_BIT))
+             entry->flags |= NETSNMP_FS_FLAG_ACTIVE;
+ 
+@@ -152,6 +210,9 @@
+             (entry->path[1] == '\0'))
+             entry->flags |= NETSNMP_FS_FLAG_BOOTABLE;
+ 
++        /*
++         *  XXX - identify removeable disks
++         */
+ 
+         /*
+          *  Optionally skip retrieving statistics for remote mounts
+@@ -161,12 +222,12 @@
+                                    NETSNMP_DS_AGENT_SKIPNFSINHOSTRESOURCES))
+             continue;
+ 
+-        if ( statfs( entry->path, &stat_buf ) < 0 ) {
++        if ( NSFS_STATFS( entry->path, &stat_buf ) < 0 ) {
+             snprintf( tmpbuf, sizeof(tmpbuf), "Cannot statfs %s\n", entry->path );
+             snmp_log_perror( tmpbuf );
+             continue;
+         }
+-        entry->units =  stat_buf.f_bsize;
++        entry->units =  stat_buf.NSFS_SIZE;
+         entry->size  =  stat_buf.f_blocks;
+         entry->used  = (stat_buf.f_blocks - stat_buf.f_bfree);
+         entry->avail =  stat_buf.f_bavail;
+diff -Nru old/agent/mibgroup/hardware/fsys/hw_fsys.c net-snmp-5.5/agent/mibgroup/hardware/fsys/hw_fsys.c
+--- old/agent/mibgroup/hardware/fsys/hw_fsys.c	2008-03-07 16:40:38.000000000 +0100
++++ net-snmp-5.5/agent/mibgroup/hardware/fsys/hw_fsys.c	2010-05-24 12:07:11.000000000 +0200
+@@ -62,12 +62,12 @@
+ /*
+  *  Return the main fsys container
+  */
+-netsnmp_container *get_fsys_container( void ) { return _fsys_container; }
++netsnmp_container *netsnmp_fsys_get_container( void ) { return _fsys_container; }
+ 
+ /*
+  *  Return the main fsys cache control structure (if defined)
+  */
+-netsnmp_cache *get_fsys_cache( void ) { return _fsys_cache; }
++netsnmp_cache *netsnmp_fsys_get_cache( void ) { return _fsys_cache; }
+ 
+ 
+ /*
+@@ -106,6 +106,7 @@
+ _fsys_load( void )
+ {
+     netsnmp_fsys_arch_load();
++    return 0;
+ }
+ 
+ /*
+@@ -168,7 +169,7 @@
+      */
+     sp = _fsys_create_entry();
+     if ( sp ) {
+-        strcpy( sp->path, path );
++        strncpy( sp->path, path, sizeof(sp->path) );
+     }
+     return sp;
+ }
+@@ -211,7 +212,7 @@
+      */
+     sp = _fsys_create_entry();
+     if ( sp ) {
+-        strcpy( sp->device, device );
++        strncpy( sp->device, device, sizeof(sp->device) );
+     }
+     return sp;
+ }
+diff -Nru old/agent/mibgroup/hardware/fsys/hw_fsys.h net-snmp-5.5/agent/mibgroup/hardware/fsys/hw_fsys.h
+--- old/agent/mibgroup/hardware/fsys/hw_fsys.h	2008-03-07 16:40:38.000000000 +0100
++++ net-snmp-5.5/agent/mibgroup/hardware/fsys/hw_fsys.h	2010-05-24 12:07:11.000000000 +0200
+@@ -1 +1,2 @@
+ void init_fsys(void);
++void shutdown_hw_fsys( void );
+diff -Nru old/agent/mibgroup/hardware/fsys/mnttypes.h net-snmp-5.5/agent/mibgroup/hardware/fsys/mnttypes.h
+--- old/agent/mibgroup/hardware/fsys/mnttypes.h	2008-03-07 16:40:38.000000000 +0100
++++ net-snmp-5.5/agent/mibgroup/hardware/fsys/mnttypes.h	2010-05-24 12:07:11.000000000 +0200
+@@ -39,12 +39,18 @@
+ #ifndef MNTTYPE_EXT3
+ #define MNTTYPE_EXT3     "ext3"
+ #endif
++#ifndef MNTTYPE_EXT4
++#define MNTTYPE_EXT4     "ext4"
++#endif
+ #ifndef MNTTYPE_EXT2FS
+ #define MNTTYPE_EXT2FS   "ext2fs"
+ #endif
+ #ifndef MNTTYPE_EXT3FS
+ #define MNTTYPE_EXT3FS   "ext3fs"
+ #endif
++#ifndef MNTTYPE_EXT4FS
++#define MNTTYPE_EXT4FS   "ext4fs"
++#endif
+ #ifndef MNTTYPE_FAT32
+ #define MNTTYPE_FAT32    "fat32"
+ #endif
+@@ -75,6 +81,9 @@
+ #ifndef MNTTYPE_NFS3
+ #define MNTTYPE_NFS3     "nfs3"
+ #endif
++#ifndef MNTTYPE_NFS4
++#define MNTTYPE_NFS4     "nfs4"
++#endif
+ #ifndef MNTTYPE_NTFS
+ #define MNTTYPE_NTFS     "ntfs"
+ #endif
+@@ -87,6 +96,9 @@
+ #ifndef MNTTYPE_SMBFS
+ #define MNTTYPE_SMBFS    "smbfs"
+ #endif
++#ifndef MNTTYPE_CIFS
++#define MNTTYPE_CIFS     "cifs"
++#endif
+ #ifndef MNTTYPE_SYSV
+ #define MNTTYPE_SYSV     "sysv"
+ #endif
+@@ -98,7 +110,21 @@
+ #endif
+ 
+ /*
++ *  File systems to monitor, but not covered by HR-TYPES enumerations
++ */
++#ifndef MNTTYPE_LOFS
++#define MNTTYPE_LOFS     "lofs"
++#endif
++#ifndef MNTTYPE_APP
++#define MNTTYPE_APP      "app"
++#endif
++#ifndef MNTTYPE_MVFS
++#define MNTTYPE_MVFS     "mvfs"
++#endif
++
++/*
+  *  File systems to skip
++ *    (Probably not strictly needed)
+  */
+ #ifndef MNTTYPE_DEVPTS
+ #define MNTTYPE_DEVPTS   "devpts"
+@@ -118,5 +144,11 @@
+ #ifndef MNTTYPE_USBFS
+ #define MNTTYPE_USBFS    "usbfs"
+ #endif
++#ifndef MNTTYPE_BINFMT
++#define MNTTYPE_BINFMT   "binfmt_misc"
++#endif
++#ifndef MNTTYPE_RPCPIPE
++#define MNTTYPE_RPCPIPE  "rpc_pipefs"
++#endif
+ 
+ #endif /* _NETSNMP_FSYS_MNTTYPES_H */
+diff -Nru old/agent/mibgroup/hardware/fsys.h net-snmp-5.5/agent/mibgroup/hardware/fsys.h
+--- old/agent/mibgroup/hardware/fsys.h	2008-03-07 16:40:38.000000000 +0100
++++ net-snmp-5.5/agent/mibgroup/hardware/fsys.h	2010-05-24 12:07:11.000000000 +0200
+@@ -1,5 +1,7 @@
+ config_require(hardware/fsys/hw_fsys)
+-#if defined(HAVE_GETVFSSTAT) || defined(HAVE_GETFSSTAT)
++#if defined(aix4) || defined(aix5) || defined(aix6)
++config_require(hardware/fsys/fsys_mntctl)
++#elif defined(HAVE_GETVFSSTAT) || defined(HAVE_GETFSSTAT)
+ config_require(hardware/fsys/fsys_getfsstat)
+ #else
+ config_require(hardware/fsys/fsys_mntent)
+diff -Nru old/agent/mibgroup/host/hrh_filesys.c net-snmp-5.5/agent/mibgroup/host/hrh_filesys.c
+--- old/agent/mibgroup/host/hrh_filesys.c	2008-10-21 23:10:43.000000000 +0200
++++ net-snmp-5.5/agent/mibgroup/host/hrh_filesys.c	2010-05-24 12:07:11.000000000 +0200
+@@ -20,7 +20,7 @@
+ #include <net-snmp/agent/hardware/fsys.h>
+ #include "host_res.h"
+ #include "hrh_filesys.h"
+-#include "hr_storage.h"
++#include "hrh_storage.h"
+ #include "hr_disk.h"
+ #include <net-snmp/utilities.h>
+ 
+@@ -243,7 +243,9 @@
+         return (u_char *) string;
+ 
+     case HRFSYS_TYPE:
+-        fsys_type_id[fsys_type_len - 1] = HRFS_entry->type;
++        fsys_type_id[fsys_type_len - 1] = 
++            (HRFS_entry->type > _NETSNMP_FS_TYPE_LOCAL ?
++                                 NETSNMP_FS_TYPE_OTHER : HRFS_entry->type);
+         *var_len = sizeof(fsys_type_id);
+         return (u_char *) fsys_type_id;
+ 
+@@ -278,7 +280,7 @@
+ void
+ Init_HR_FileSys(void)
+ {
+-    netsnmp_cache *c = get_fsys_cache();
++    netsnmp_cache *c = netsnmp_fsys_get_cache();
+     netsnmp_cache_check_and_reload( c );
+ 
+     HRFS_entry = NULL;
+diff -Nru old/agent/mibgroup/host/hrh_filesys.h net-snmp-5.5/agent/mibgroup/host/hrh_filesys.h
+--- old/agent/mibgroup/host/hrh_filesys.h	2008-03-07 16:42:00.000000000 +0100
++++ net-snmp-5.5/agent/mibgroup/host/hrh_filesys.h	2010-05-24 12:07:11.000000000 +0200
+@@ -1,5 +1,5 @@
+ /*
+- *  Host Resources MIB - file system device group interface - hr_filesys.h
++ *  Host Resources MIB - file system device group interface (HAL rewrite) - hrh_filesys.h
+  *
+  */
+ #ifndef _MIBGROUP_HRFSYS_H
+diff -Nru old/agent/mibgroup/host/hrh_storage.c net-snmp-5.5/agent/mibgroup/host/hrh_storage.c
+--- old/agent/mibgroup/host/hrh_storage.c	1970-01-01 01:00:00.000000000 +0100
++++ net-snmp-5.5/agent/mibgroup/host/hrh_storage.c	2010-05-24 12:07:11.000000000 +0200
+@@ -0,0 +1,505 @@
++/*
++ *  Host Resources MIB - storage group implementation - hr_storage.c
++ *
++ */
++
++#include <net-snmp/net-snmp-config.h>
++#include <net-snmp/net-snmp-includes.h>
++#include <net-snmp/agent/net-snmp-agent-includes.h>
++#include <net-snmp/agent/hardware/memory.h>
++#include <net-snmp/agent/hardware/fsys.h>
++#include "host_res.h"
++#include "hrh_filesys.h"
++#include "hrh_storage.h"
++#include "hr_disk.h"
++#include <net-snmp/utilities.h>
++
++
++#include <sys/types.h>
++#if HAVE_SYS_PARAM_H
++#include <sys/param.h>
++#endif
++#if HAVE_UNISTD_H
++#include <unistd.h>
++#endif
++#if TIME_WITH_SYS_TIME
++# ifdef WIN32
++#  include <windows.h>
++#  include <errno.h>
++#  include <sys/timeb.h>
++# else
++#  include <sys/time.h>
++# endif
++# include <time.h>
++#else
++# if HAVE_SYS_TIME_H
++#  include <sys/time.h>
++# else
++#  include <time.h>
++# endif
++#endif
++
++#if HAVE_FCNTL_H
++#include <fcntl.h>
++#endif
++
++#if HAVE_STRING_H
++#include <string.h>
++#else
++#include <strings.h>
++#endif
++
++#include <net-snmp/output_api.h>
++
++#include <net-snmp/agent/agent_read_config.h>
++#include <net-snmp/library/read_config.h>
++
++#define HRSTORE_MONOTONICALLY_INCREASING
++
++        /*********************
++	 *
++	 *  Kernel & interface information,
++	 *   and internal forward declarations
++	 *
++	 *********************/
++
++
++extern netsnmp_fsys_info *HRFS_entry;
++
++static void parse_storage_config(const char *, char *);
++
++        /*********************
++	 *
++	 *  Initialisation & common implementation functions
++	 *
++	 *********************/
++int             Get_Next_HR_Store(void);
++void            Init_HR_Store(void);
++int             header_hrstore(struct variable *, oid *, size_t *, int,
++                               size_t *, WriteMethod **);
++void*           header_hrstoreEntry(struct variable *, oid *, size_t *,
++                                    int, size_t *, WriteMethod **);
++Netsnmp_Node_Handler handle_memsize;
++
++
++#define	HRSTORE_MEMSIZE		1
++#define	HRSTORE_INDEX		2
++#define	HRSTORE_TYPE		3
++#define	HRSTORE_DESCR		4
++#define	HRSTORE_UNITS		5
++#define	HRSTORE_SIZE		6
++#define	HRSTORE_USED		7
++#define	HRSTORE_FAILS		8
++
++struct variable2 hrstore_variables[] = {
++    {HRSTORE_INDEX, ASN_INTEGER, NETSNMP_OLDAPI_RONLY,
++     var_hrstore, 1, {1}},
++    {HRSTORE_TYPE, ASN_OBJECT_ID, NETSNMP_OLDAPI_RONLY,
++     var_hrstore, 1, {2}},
++    {HRSTORE_DESCR, ASN_OCTET_STR, NETSNMP_OLDAPI_RONLY,
++     var_hrstore, 1, {3}},
++    {HRSTORE_UNITS, ASN_INTEGER, NETSNMP_OLDAPI_RONLY,
++     var_hrstore, 1, {4}},
++    {HRSTORE_SIZE, ASN_INTEGER, NETSNMP_OLDAPI_RONLY,
++     var_hrstore, 1, {5}},
++    {HRSTORE_USED, ASN_INTEGER, NETSNMP_OLDAPI_RONLY,
++     var_hrstore, 1, {6}},
++    {HRSTORE_FAILS, ASN_COUNTER, NETSNMP_OLDAPI_RONLY,
++     var_hrstore, 1, {7}}
++};
++oid             hrstore_variables_oid[] = { 1, 3, 6, 1, 2, 1, 25, 2 };
++oid             hrMemorySize_oid[]   = { 1, 3, 6, 1, 2, 1, 25, 2, 2 };
++oid             hrStorageTable_oid[] = { 1, 3, 6, 1, 2, 1, 25, 2, 3, 1 };
++
++
++void
++init_hrh_storage(void)
++{
++    char *appname;
++
++    netsnmp_register_scalar(
++        netsnmp_create_handler_registration("host/hrMemorySize", handle_memsize,
++                           hrMemorySize_oid, OID_LENGTH(hrMemorySize_oid),
++                                             HANDLER_CAN_RONLY));
++    REGISTER_MIB("host/hr_storage", hrstore_variables, variable2,
++                 hrStorageTable_oid);
++
++    appname = netsnmp_ds_get_string(NETSNMP_DS_LIBRARY_ID,
++                                    NETSNMP_DS_LIB_APPTYPE);
++    netsnmp_ds_register_config(ASN_BOOLEAN, appname, "skipNFSInHostResources", 
++			       NETSNMP_DS_APPLICATION_ID,
++			       NETSNMP_DS_AGENT_SKIPNFSINHOSTRESOURCES);
++
++    snmpd_register_config_handler("storageUseNFS", parse_storage_config, NULL,
++	"1 | 2\t\t(1 = enable, 2 = disable)");
++}
++
++static int storageUseNFS = 1;	/* Default to reporting NFS mounts as NetworkDisk */
++
++static void
++parse_storage_config(const char *token, char *cptr)
++{
++    char *val;
++    int ival;
++    char *st;
++
++    val = strtok_r(cptr, " \t", &st);
++    if (!val) {
++        config_perror("Missing FLAG parameter in storageUseNFS");
++        return;
++    }
++    ival = atoi(val);
++    if (ival < 1 || ival > 2) {
++        config_perror("storageUseNFS must be 1 or 2");
++        return;
++    }
++    storageUseNFS = (ival == 1) ? 1 : 0;
++}
++
++/*
++ * header_hrstoreEntry(...
++ * Arguments:
++ * vp     IN      - pointer to variable entry that points here
++ * name    IN/OUT  - IN/name requested, OUT/name found
++ * length  IN/OUT  - length of IN/OUT oid's 
++ * exact   IN      - TRUE if an exact match was requested
++ * var_len OUT     - length of variable or 0 if function returned
++ * write_method
++ * 
++ */
++
++void *
++header_hrstoreEntry(struct variable *vp,
++                    oid * name,
++                    size_t * length,
++                    int exact,
++                    size_t * var_len, WriteMethod ** write_method)
++{
++#define HRSTORE_ENTRY_NAME_LENGTH	11
++    oid             newname[MAX_OID_LEN];
++    int             storage_idx, LowIndex = -1;
++    int             result;
++    int                  idx = -1;
++    netsnmp_memory_info *mem  = NULL;
++
++    DEBUGMSGTL(("host/hr_storage", "var_hrstoreEntry: request "));
++    DEBUGMSGOID(("host/hr_storage", name, *length));
++    DEBUGMSG(("host/hr_storage", " exact=%d\n", exact));
++
++    memcpy((char *) newname, (char *) vp->name,
++           (int) vp->namelen * sizeof(oid));
++    result = snmp_oid_compare(name, *length, vp->name, vp->namelen);
++
++    DEBUGMSGTL(("host/hr_storage", "var_hrstoreEntry: compare "));
++    DEBUGMSGOID(("host/hr_storage", vp->name, vp->namelen));
++    DEBUGMSG(("host/hr_storage", " => %d\n", result));
++
++
++    if (result < 0 ||
++        *length <= HRSTORE_ENTRY_NAME_LENGTH ) {
++       /*
++        * Requested OID too early or too short to refer
++        *   to a valid row (for the current column object).
++        * GET requests should fail, GETNEXT requests
++        *   should use the first row.
++        */
++        if ( exact )
++            return NULL;
++        netsnmp_memory_load();
++        mem = netsnmp_memory_get_first( 0 );
++    }
++    else {
++        /*
++         * Otherwise, retrieve the requested
++         *  (or following) row as appropriate.
++         */
++        if ( exact && *length > HRSTORE_ENTRY_NAME_LENGTH+1 )
++            return NULL;   /* Too long for a valid instance */
++        idx = name[ HRSTORE_ENTRY_NAME_LENGTH ];
++        if ( idx < NETSNMP_MEM_TYPE_MAX ) {
++            netsnmp_memory_load();
++            mem = ( exact ? netsnmp_memory_get_byIdx( idx, 0 ) :
++                       netsnmp_memory_get_next_byIdx( idx, 0 ));
++        }
++    }
++
++    /*
++     * If this matched a memory-based entry, then
++     *    update the OID parameter(s) for GETNEXT requests.
++     */
++    if ( mem ) {
++        if ( !exact ) {
++            newname[ HRSTORE_ENTRY_NAME_LENGTH ] = mem->idx;
++            memcpy((char *) name, (char *) newname,
++                   ((int) vp->namelen + 1) * sizeof(oid));
++            *length = vp->namelen + 1;
++        }
++    }
++    /*
++     * If this didn't match a memory-based entry,
++     *   then consider the disk-based storage.
++     */
++    else {
++        Init_HR_Store();
++        for (;;) {
++            storage_idx = Get_Next_HR_Store();
++            DEBUGMSG(("host/hr_storage", "(index %d ....", storage_idx));
++            if (storage_idx == -1)
++                break;
++            newname[HRSTORE_ENTRY_NAME_LENGTH] = storage_idx;
++            DEBUGMSGOID(("host/hr_storage", newname, *length));
++            DEBUGMSG(("host/hr_storage", "\n"));
++            result = snmp_oid_compare(name, *length, newname, vp->namelen + 1);
++            if (exact && (result == 0)) {
++                LowIndex = storage_idx;
++                /*
++                 * Save storage status information 
++                 */
++                break;
++            }
++            if ((!exact && (result < 0)) &&
++                (LowIndex == -1 || storage_idx < LowIndex)) {
++                LowIndex = storage_idx;
++                /*
++                 * Save storage status information 
++                 */
++#ifdef HRSTORE_MONOTONICALLY_INCREASING
++                break;
++#endif
++            }
++        }
++        if ( LowIndex != -1 ) {
++            if ( !exact ) {
++                newname[ HRSTORE_ENTRY_NAME_LENGTH ] = LowIndex;
++                memcpy((char *) name, (char *) newname,
++                       ((int) vp->namelen + 1) * sizeof(oid));
++                *length = vp->namelen + 1;
++            }
++            mem = (netsnmp_memory_info*)0xffffffff;   /* To indicate 'success' */
++        }
++    }
++
++    *write_method = (WriteMethod*)0;
++    *var_len = sizeof(long);    /* default to 'long' results */
++
++    /*
++     *  ... and return the appropriate row
++     */
++    DEBUGMSGTL(("host/hr_storage", "var_hrstoreEntry: process "));
++    DEBUGMSGOID(("host/hr_storage", name, *length));
++    DEBUGMSG(("host/hr_storage", " (%p)\n", mem));
++    return (void*)mem;
++}
++
++oid             storage_type_id[] = { 1, 3, 6, 1, 2, 1, 25, 2, 1, 1 };  /* hrStorageOther */
++int             storage_type_len =
++    sizeof(storage_type_id) / sizeof(storage_type_id[0]);
++
++        /*********************
++	 *
++	 *  System specific implementation functions
++	 *
++	 *********************/
++
++int
++handle_memsize(netsnmp_mib_handler *handler,
++                netsnmp_handler_registration *reginfo,
++                netsnmp_agent_request_info *reqinfo,
++                netsnmp_request_info *requests)
++{
++    netsnmp_memory_info *mem_info;
++    int val;
++
++    /*
++     * We just need to handle valid GET requests, as invalid instances
++     *   are rejected automatically, and (valid) GETNEXT requests are
++     *   converted into the appropriate GET request.
++     *
++     * We also only ever receive one request at a time.
++     */
++    switch (reqinfo->mode) {
++    case MODE_GET:
++        netsnmp_memory_load();
++        mem_info = netsnmp_memory_get_byIdx( NETSNMP_MEM_TYPE_PHYSMEM, 0 );
++        if ( !mem_info || mem_info->size == -1 || mem_info->units == -1 )
++            netsnmp_set_request_error( reqinfo, requests, SNMP_NOSUCHOBJECT );
++	else {
++            val  =  mem_info->size;     /* memtotal */
++            val *= (mem_info->units/1024);
++            snmp_set_var_typed_value(requests->requestvb, ASN_INTEGER,
++                                     (u_char *)&val, sizeof(val));
++        }
++        return SNMP_ERR_NOERROR;
++
++    default:
++        /*
++         * we should never get here, so this is a really bad error 
++         */
++        snmp_log(LOG_ERR, "unknown mode (%d) in handle_memsize\n",
++                 reqinfo->mode);
++        return SNMP_ERR_GENERR;
++    }
++
++    return SNMP_ERR_NOERROR;
++}
++
++
++u_char         *
++var_hrstore(struct variable *vp,
++            oid * name,
++            size_t * length,
++            int exact, size_t * var_len, WriteMethod ** write_method)
++{
++    int             store_idx = 0;
++    static char     string[1024];
++    void                *ptr;
++    netsnmp_memory_info *mem = NULL;
++
++really_try_next:
++	ptr = header_hrstoreEntry(vp, name, length, exact, var_len,
++					write_method);
++	if (ptr == NULL)
++	    return NULL;
++
++        store_idx = name[ HRSTORE_ENTRY_NAME_LENGTH ];
++        if (HRFS_entry &&
++	    store_idx > NETSNMP_MEM_TYPE_MAX &&
++            netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID,
++                                   NETSNMP_DS_AGENT_SKIPNFSINHOSTRESOURCES) &&
++            Check_HR_FileSys_NFS())
++            return NULL;
++        if (store_idx <= NETSNMP_MEM_TYPE_MAX ) {
++	    mem = (netsnmp_memory_info*)ptr;
++        }
++
++
++
++    switch (vp->magic) {
++    case HRSTORE_INDEX:
++        long_return = store_idx;
++        return (u_char *) & long_return;
++    case HRSTORE_TYPE:
++        if (store_idx > NETSNMP_MEM_TYPE_MAX)
++            if (HRFS_entry->flags & NETSNMP_FS_FLAG_REMOTE )
++                storage_type_id[storage_type_len - 1] = 10;     /* Network Disk */
++            else if (HRFS_entry->flags & NETSNMP_FS_FLAG_REMOVE )
++                storage_type_id[storage_type_len - 1] = 5;      /* Removable Disk */
++            else
++                storage_type_id[storage_type_len - 1] = 4;      /* Assume fixed */
++        else
++            switch (store_idx) {
++            case NETSNMP_MEM_TYPE_PHYSMEM:
++            case NETSNMP_MEM_TYPE_USERMEM:
++                storage_type_id[storage_type_len - 1] = 2;      /* RAM */
++                break;
++            case NETSNMP_MEM_TYPE_VIRTMEM:
++            case NETSNMP_MEM_TYPE_SWAP:
++                storage_type_id[storage_type_len - 1] = 3;      /* Virtual Mem */
++                break;
++            default:
++                storage_type_id[storage_type_len - 1] = 1;      /* Other */
++                break;
++            }
++        *var_len = sizeof(storage_type_id);
++        return (u_char *) storage_type_id;
++    case HRSTORE_DESCR:
++        if (store_idx > NETSNMP_MEM_TYPE_MAX) {
++            strncpy(string, HRFS_entry->path, sizeof(string)-1);
++            string[ sizeof(string)-1 ] = 0;
++            *var_len = strlen(string);
++            return (u_char *) string;
++        } else {
++            if ( !mem || !mem->descr )
++                goto try_next;
++            *var_len = strlen(mem->descr);
++            return (u_char *) mem->descr;
++        }
++    case HRSTORE_UNITS:
++        if (store_idx > NETSNMP_MEM_TYPE_MAX)
++            long_return = HRFS_entry->units;
++        else {
++            if ( !mem || mem->units == -1 )
++                goto try_next;
++            long_return = mem->units;
++        }
++        return (u_char *) & long_return;
++    case HRSTORE_SIZE:
++        if (store_idx > NETSNMP_MEM_TYPE_MAX)
++            long_return = HRFS_entry->size;
++        else {
++            if ( !mem || mem->size == -1 )
++                goto try_next;
++            long_return = mem->size;
++        }
++        return (u_char *) & long_return;
++    case HRSTORE_USED:
++        if (store_idx > NETSNMP_MEM_TYPE_MAX)
++            long_return = HRFS_entry->used;
++        else {
++            if ( !mem || mem->size == -1 || mem->free == -1 )
++                goto try_next;
++            long_return = mem->size - mem->free;
++        }
++        return (u_char *) & long_return;
++    case HRSTORE_FAILS:
++        if (store_idx > NETSNMP_MEM_TYPE_MAX)
++#if NETSNMP_NO_DUMMY_VALUES
++	    goto try_next;
++#else
++            long_return = 0;
++#endif
++        else {
++            if ( !mem || mem->other == -1 )
++                goto try_next;
++            long_return = mem->other;
++        }
++        return (u_char *) & long_return;
++    default:
++        DEBUGMSGTL(("snmpd", "unknown sub-id %d in var_hrstore\n",
++                    vp->magic));
++    }
++    return NULL;
++
++  try_next:
++    if (!exact)
++        goto really_try_next;
++
++    return NULL;
++}
++
++
++        /*********************
++	 *
++	 *  Internal implementation functions
++	 *
++	 *********************/
++
++static int      HRS_index;
++
++void
++Init_HR_Store(void)
++{
++    HRS_index = 0;
++    Init_HR_FileSys();
++}
++
++int
++Get_Next_HR_Store(void)
++{
++    /*
++     * File-based storage 
++     */
++	for (;;) {
++    	HRS_index = Get_Next_HR_FileSys();
++		if (HRS_index >= 0) {
++			if (!(netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID, 
++							NETSNMP_DS_AGENT_SKIPNFSINHOSTRESOURCES) && 
++						Check_HR_FileSys_NFS())) {
++				return HRS_index + NETSNMP_MEM_TYPE_MAX;	
++			}
++		} else {
++			return -1;
++		}	
++	}
++}
++
+diff -Nru old/agent/mibgroup/host/hrh_storage.h net-snmp-5.5/agent/mibgroup/host/hrh_storage.h
+--- old/agent/mibgroup/host/hrh_storage.h	1970-01-01 01:00:00.000000000 +0100
++++ net-snmp-5.5/agent/mibgroup/host/hrh_storage.h	2010-05-24 12:07:11.000000000 +0200
+@@ -0,0 +1,23 @@
++/*
++ *  Host Resources MIB - storage group interface (HAL rewrite) - hrh_storage.h
++ *
++ */
++#ifndef _MIBGROUP_HRSTORAGE_H
++#define _MIBGROUP_HRSTORAGE_H
++
++config_require(hardware/memory)
++config_require(hardware/fsys)
++config_require(host/hrh_filesys)
++
++config_exclude( host/hr_storage )
++
++extern void     init_hrh_storage(void);
++extern FindVarMethod var_hrstore;
++
++
++#define	HRS_TYPE_MBUF		1
++#define	HRS_TYPE_MEM		2
++#define	HRS_TYPE_SWAP		3
++#define	HRS_TYPE_FIXED_MAX	3     /* the largest fixed type */
++
++#endif                          /* _MIBGROUP_HRSTORAGE_H */
+diff -Nru old/agent/mibgroup/host.h net-snmp-5.5/agent/mibgroup/host.h
+--- old/agent/mibgroup/host.h	2008-07-25 16:19:27.000000000 +0200
++++ net-snmp-5.5/agent/mibgroup/host.h	2010-05-24 12:38:02.000000000 +0200
+@@ -14,7 +14,6 @@
+  */
+ 
+ 	config_require(host/hr_system)
+-	config_require(host/hr_storage)
+ 	config_require(host/hr_device)
+ 	config_require(host/hr_other)
+ 	config_require(host/hr_proc)
+@@ -22,24 +21,12 @@
+ 	config_require(host/hr_print)
+ 	config_require(host/hr_disk)
+ 	config_require(host/hr_partition)
+-	config_require(host/hr_filesys)
+ 
+-#if     1  /*   XXX_USING_ENABLE_NEW_FEATURES_MECHANISM_INSTEAD */
++	config_require(host/hrh_storage)
++	config_require(host/hrh_filesys)
++
+ 	config_version_require((host/hr_swinst,  5.6, host/hrSWInstalledTable))
+ 	config_version_require((host/hr_swrun,   5.6, host/hrSWRunTable))
+-#else
+-#ifndef NETSNMP_INCLUDE_HRSWINST_REWRITES
+-	config_require(host/hr_swinst)
+-#else
+-	config_require(host/hrSWInstalledTable)
+-#endif
+-#ifndef NETSNMP_INCLUDE_HRSWRUN_REWRITES
+-	config_require(host/hr_swrun)
+-#else
+-	config_require(host/hrSWRunTable)
+-	config_require(host/hrSWRunPerfTable)
+-#endif
+-#endif
+ 
+ /* add the host resources mib to the default mibs to load */
+ config_add_mib(HOST-RESOURCES-MIB)
+diff -Nru old/include/net-snmp/agent/hardware/fsys.h net-snmp-5.5/include/net-snmp/agent/hardware/fsys.h
+--- old/include/net-snmp/agent/hardware/fsys.h	1970-01-01 01:00:00.000000000 +0100
++++ net-snmp-5.5/include/net-snmp/agent/hardware/fsys.h	2010-05-24 12:06:43.000000000 +0200
+@@ -0,0 +1,93 @@
++typedef struct netsnmp_fsys_info_s netsnmp_fsys_info;
++
++#define _NETSNMP_FS_TYPE_SKIP_BIT   0x2000
++#define _NETSNMP_FS_TYPE_LOCAL      0x1000
++
++   /*
++    * Enumeration from HOST-RESOURCES-TYPES mib
++    */
++#define NETSNMP_FS_TYPE_OTHER	   1
++#define NETSNMP_FS_TYPE_UNKNOWN	   2
++#define NETSNMP_FS_TYPE_BERKELEY   3
++#define NETSNMP_FS_TYPE_SYSV	   4
++#define NETSNMP_FS_TYPE_FAT	   5
++#define NETSNMP_FS_TYPE_HPFS	   6
++#define NETSNMP_FS_TYPE_HFS	   7
++#define NETSNMP_FS_TYPE_MFS	   8
++#define NETSNMP_FS_TYPE_NTFS	   9
++#define NETSNMP_FS_TYPE_VNODE	   10
++#define NETSNMP_FS_TYPE_JFS	   11
++#define NETSNMP_FS_TYPE_ISO9660	   12
++#define NETSNMP_FS_TYPE_ROCKRIDGE  13
++#define NETSNMP_FS_TYPE_NFS	   14
++#define NETSNMP_FS_TYPE_NETWARE	   15
++#define NETSNMP_FS_TYPE_AFS	   16
++#define NETSNMP_FS_TYPE_DFS	   17
++#define NETSNMP_FS_TYPE_APPLESHARE 18
++#define NETSNMP_FS_TYPE_RFS	   19
++#define NETSNMP_FS_TYPE_DGCS	   20
++#define NETSNMP_FS_TYPE_BOOTFS	   21
++#define NETSNMP_FS_TYPE_FAT32	   22
++#define NETSNMP_FS_TYPE_EXT2	   23
++
++   /*
++    * Additional enumerationis - not listed in that MIB
++    */
++#define NETSNMP_FS_TYPE_IGNORE	   1 | _NETSNMP_FS_TYPE_LOCAL | _NETSNMP_FS_TYPE_SKIP_BIT
++
++#define NETSNMP_FS_TYPE_PROC	   2 | _NETSNMP_FS_TYPE_LOCAL | _NETSNMP_FS_TYPE_SKIP_BIT
++
++#define NETSNMP_FS_TYPE_DEVPTS	   3 | _NETSNMP_FS_TYPE_LOCAL | _NETSNMP_FS_TYPE_SKIP_BIT
++#define NETSNMP_FS_TYPE_SYSFS	   4 | _NETSNMP_FS_TYPE_LOCAL | _NETSNMP_FS_TYPE_SKIP_BIT
++#define NETSNMP_FS_TYPE_TMPFS	   5 | _NETSNMP_FS_TYPE_LOCAL
++#define NETSNMP_FS_TYPE_USBFS	   6 | _NETSNMP_FS_TYPE_LOCAL
++
++#define NETSNMP_FS_FLAG_ACTIVE   0x01
++#define NETSNMP_FS_FLAG_REMOTE   0x02
++#define NETSNMP_FS_FLAG_RONLY    0x04
++#define NETSNMP_FS_FLAG_BOOTABLE 0x08
++#define NETSNMP_FS_FLAG_REMOVE   0x10
++
++#define NETSNMP_FS_FIND_CREATE     1   /* or use one of the type values */
++#define NETSNMP_FS_FIND_EXIST      0
++
++struct netsnmp_fsys_info_s {
++     netsnmp_index  idx;
++  /* int  idx; */
++ 
++     char path[  SNMP_MAXPATH+1];
++     char device[SNMP_MAXPATH+1];
++     int  type;
++
++     long size;
++     long used;
++     long avail;
++     long units;
++
++     long inums_total;
++     long inums_avail;
++
++     long flags;
++
++     netsnmp_fsys_info *next;
++};
++
++
++    /*
++     * Possibly not all needed ??
++     */
++netsnmp_fsys_info *netsnmp_fsys_get_first( void );
++netsnmp_fsys_info *netsnmp_fsys_get_next( netsnmp_fsys_info* );
++netsnmp_fsys_info *netsnmp_fsys_get_byIdx(  int,   int );
++netsnmp_fsys_info *netsnmp_fsys_get_next_byIdx(int,int );
++
++netsnmp_fsys_info *netsnmp_fsys_by_device(  char*, int );
++netsnmp_fsys_info *netsnmp_fsys_by_path(    char*, int );
++
++netsnmp_cache *netsnmp_fsys_get_cache( void );
++int  netsnmp_fsys_load( netsnmp_cache *cache, void *data );
++void netsnmp_fsys_free( netsnmp_cache *cache, void *data );
++
++unsigned int netsnmp_fsys_size( netsnmp_fsys_info* );
++unsigned int netsnmp_fsys_used( netsnmp_fsys_info* );
++unsigned int netsnmp_fsys_avail(netsnmp_fsys_info* );

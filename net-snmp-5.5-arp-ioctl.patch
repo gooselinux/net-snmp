@@ -1,0 +1,292 @@
+543499: snmpd: ioctl 35123 returned -1.
+
+Upstream SVN rev. 17892 and 17963.
+
+    CHANGES: snmpd: Add support of network interfaces with HW address bigger than 6 bytes to ipNetToMediaTable and ipNetToPhysicalTable.
+    Some HW, like InfiniBand, uses HW addresses with 9 and more bytes. Snmpd on Linux was not able to parse /proc/net/arp then and produced ugly 'ioctl 35123 returned -1' to log.
+
+diff --git a/agent/mibgroup/ip-mib/data_access/arp_linux.c b/agent/mibgroup/ip-mib/data_access/arp_linux.c
+index e98f871..0c4a72f 100644
+--- a/agent/mibgroup/ip-mib/data_access/arp_linux.c
++++ b/agent/mibgroup/ip-mib/data_access/arp_linux.c
+@@ -79,7 +79,10 @@ _load_v4(netsnmp_container *container, int idx_offset)
+     char            line[128];
+     int             rc = 0;
+     netsnmp_arp_entry *entry;
+-    
++    char           arp[3*NETSNMP_ACCESS_ARP_PHYSADDR_BUF_SIZE+1];
++    char           *arp_token;
++    int             i;
++
+     netsnmp_assert(NULL != container);
+ 
+ #define PROCFILE "/proc/net/arp"
+@@ -99,23 +102,22 @@ _load_v4(netsnmp_container *container, int idx_offset)
+      */
+     while (fgets(line, sizeof(line), in)) {
+         
+-        int             za, zb, zc, zd, ze, zf, zg, zh, zi, zj;
++        int             za, zb, zc, zd;
+         int             tmp_flags;
+         char            ifname[21];
+ 
+         rc = sscanf(line,
+-                    "%d.%d.%d.%d 0x%*x 0x%x %x:%x:%x:%x:%x:%x %*[^ ] %20s\n",
+-                    &za, &zb, &zc, &zd, &tmp_flags, &ze, &zf, &zg, &zh, &zi,
+-                    &zj, ifname);
+-        if (12 != rc) {            
++                    "%d.%d.%d.%d 0x%*x 0x%x %96s %*[^ ] %20s\n",
++                    &za, &zb, &zc, &zd, &tmp_flags, arp, ifname);
++        if (7 != rc) {
+             snmp_log(LOG_ERR, PROCFILE " data format error (%d!=12)\n", rc);
+             snmp_log(LOG_ERR, " line ==|%s|\n", line);
+             continue;
+         }
+         DEBUGMSGTL(("access:arp:container",
+                     "ip addr %d.%d.%d.%d, flags 0x%X, hw addr "
+-                    "%x:%x:%x:%x:%x:%x, name %s\n",
+-                    za,zb,zc,zd, tmp_flags, ze,zf,zg,zh,zi,zj, ifname ));
++                    "%s, name %s\n",
++                    za,zb,zc,zd, tmp_flags, arp, ifname ));
+ 
+         /*
+          */
+@@ -154,13 +156,10 @@ _load_v4(netsnmp_container *container, int idx_offset)
+         /*
+          * parse hw addr
+          */
+-        entry->arp_physaddress[0] = ze;
+-        entry->arp_physaddress[1] = zf;
+-        entry->arp_physaddress[2] = zg;
+-        entry->arp_physaddress[3] = zh;
+-        entry->arp_physaddress[4] = zi;
+-        entry->arp_physaddress[5] = zj;
+-        entry->arp_physaddress_len = 6;
++        for (arp_token = strtok(arp, ":"), i=0; arp_token != NULL; arp_token = strtok(NULL, ":"), i++) {
++            entry->arp_physaddress[i] = strtol(arp_token, NULL, 16);
++        }
++        entry->arp_physaddress_len = i;
+ 
+         /*
+          * what can we do with hw? from arp manpage:
+diff --git a/include/net-snmp/data_access/arp.h b/include/net-snmp/data_access/arp.h
+index 93c193c..11e832c 100644
+--- net-snmp/include/net-snmp/data_access/arp.h
++++ net-snmp/include/net-snmp/data_access/arp.h
+@@ -17,8 +17,8 @@ extern          "C" {
+ #   define NETSNMP_ACCESS_ARP_IPADDR_BUF_SIZE 4
+ #endif
+ 
+-/** MAC address is 6 - do we want to support anything larger? */
+-#define NETSNMP_ACCESS_ARP_PHYSADDR_BUF_SIZE 6
++/** MAC address is 6, InfiniBand uses more, 32 must be enough for near future.*/
++#define NETSNMP_ACCESS_ARP_PHYSADDR_BUF_SIZE 32
+ 
+ /*************************************************************
+  * constants for enums for the MIB node
+@@ -78,7 +78,7 @@ typedef struct netsnmp_arp_s {
+    u_char    arp_physaddress[NETSNMP_ACCESS_ARP_PHYSADDR_BUF_SIZE];
+    u_char    arp_ipaddress[NETSNMP_ACCESS_ARP_IPADDR_BUF_SIZE];
+ 
+-   u_char    arp_physaddress_len;/* phys address len, 6 */
++   u_char    arp_physaddress_len;/* phys address len, max 32 */
+    u_char    arp_ipaddress_len;  /* ip address len, 4 | 16 */
+    u_char    arp_type;           /* inetNetToMediaType 1-5 */
+    u_char    arp_state;          /* inetNetToMediaState 1-7 */
+diff --git a/net-snmp/agent/mibgroup/mibII/at.c b/net-snmp/agent/mibgroup/mibII/at.c
+index 9c9d949..89482a8 100644
+--- net-snmp/agent/mibgroup/mibII/at.c
++++ net-snmp/agent/mibgroup/mibII/at.c
+@@ -128,9 +128,9 @@
+ #ifndef solaris2
+ static void     ARP_Scan_Init(void);
+ #ifdef ARP_SCAN_FOUR_ARGUMENTS
+-static int      ARP_Scan_Next(in_addr_t *, char *, u_long *, u_short *);
++static int      ARP_Scan_Next(in_addr_t *, char *, int *, u_long *, u_short *);
+ #else
+-static int      ARP_Scan_Next(in_addr_t *, char *, u_long *);
++static int      ARP_Scan_Next(in_addr_t *, char *, int *, u_long *);
+ #endif
+ #endif
+ #endif
+@@ -208,7 +208,8 @@ var_atEntry(struct variable *vp,
+     oid            *op;
+     oid             lowest[16];
+     oid             current[16];
+-    static char     PhysAddr[6], LowPhysAddr[6];
++    static char     PhysAddr[MAX_MAC_ADDR_LEN], LowPhysAddr[MAX_MAC_ADDR_LEN];
++    static int      PhysAddrLen, LowPhysAddrLen;
+     in_addr_t       Addr, LowAddr;
+     int             foundone;
+     static in_addr_t      addr_ret;
+@@ -236,7 +237,7 @@ var_atEntry(struct variable *vp,
+     ARP_Scan_Init();
+     for (;;) {
+ #ifdef ARP_SCAN_FOUR_ARGUMENTS
+-        if (ARP_Scan_Next(&Addr, PhysAddr, &ifType, &ifIndex) == 0)
++        if (ARP_Scan_Next(&Addr, PhysAddr, &PhysAddrLen, &ifType, &ifIndex) == 0)
+             break;
+         current[10] = ifIndex;
+ 
+@@ -247,7 +248,7 @@ var_atEntry(struct variable *vp,
+             op = current + 11;
+         }
+ #else                           /* ARP_SCAN_FOUR_ARGUMENTS */
+-        if (ARP_Scan_Next(&Addr, PhysAddr, &ifType) == 0)
++        if (ARP_Scan_Next(&Addr, PhysAddr, &PhysAddrLen, &ifType) == 0)
+             break;
+         current[10] = 1;
+ 
+@@ -274,6 +275,7 @@ var_atEntry(struct variable *vp,
+                 lowIfIndex = ifIndex;
+ #endif                          /*  ARP_SCAN_FOUR_ARGUMENTS */
+                 memcpy(LowPhysAddr, PhysAddr, sizeof(PhysAddr));
++                LowPhysAddrLen = PhysAddrLen;
+                 lowIfType = ifType;
+                 break;          /* no need to search further */
+             }
+@@ -295,6 +297,7 @@ var_atEntry(struct variable *vp,
+                 lowIfIndex = ifIndex;
+ #endif                          /*  ARP_SCAN_FOUR_ARGUMENTS */
+                 memcpy(LowPhysAddr, PhysAddr, sizeof(PhysAddr));
++                LowPhysAddrLen = PhysAddrLen;
+                 lowIfType = ifType;
+             }
+         }
+@@ -318,7 +321,7 @@ var_atEntry(struct variable *vp,
+ #endif                          /* ARP_SCAN_FOUR_ARGUMENTS */
+         return (u_char *) & long_return;
+     case IPMEDIAPHYSADDRESS:   /* also ATPHYSADDRESS */
+-        *var_len = sizeof(LowPhysAddr);
++        *var_len = LowPhysAddrLen;
+         return (u_char *) LowPhysAddr;
+     case IPMEDIANETADDRESS:    /* also ATNETADDRESS */
+         *var_len = sizeof(addr_ret);
+@@ -604,10 +607,12 @@ ARP_Scan_Init(void)
+ 
+     static time_t   tm = 0;     /* Time of last scan */
+     FILE           *in;
+-    int             i;
++    int             i, j;
+     char            line[128];
+-    int             za, zb, zc, zd, ze, zf, zg, zh, zi, zj;
++    int             za, zb, zc, zd;
+     char            ifname[21];
++    char            mac[3*MAX_MAC_ADDR_LEN+1];
++    char           *tok;
+ 
+     arptab_current = 0;         /* Anytime this is called we need to reset 'current' */
+ 
+@@ -646,11 +651,10 @@ ARP_Scan_Init(void)
+                 at = newtab;
+             }
+         }
+-        if (12 !=
++        if (7 !=
+             sscanf(line,
+-                   "%d.%d.%d.%d 0x%*x 0x%x %x:%x:%x:%x:%x:%x %*[^ ] %20s\n",
+-                   &za, &zb, &zc, &zd, &tmp_flags, &ze, &zf, &zg, &zh, &zi,
+-                   &zj, ifname)) {
++                   "%d.%d.%d.%d 0x%*x 0x%x %s %*[^ ] %20s\n",
++                   &za, &zb, &zc, &zd, &tmp_flags, mac, ifname)) {
+             snmp_log(LOG_ERR, "Bad line in /proc/net/arp: %s", line);
+             continue;
+         }
+@@ -663,16 +667,15 @@ ARP_Scan_Init(void)
+         }
+         ifname[sizeof(ifname)-1] = 0; /* make sure name is null terminated */
+         at[i].at_flags = tmp_flags;
+-        at[i].at_enaddr[0] = ze;
+-        at[i].at_enaddr[1] = zf;
+-        at[i].at_enaddr[2] = zg;
+-        at[i].at_enaddr[3] = zh;
+-        at[i].at_enaddr[4] = zi;
+-        at[i].at_enaddr[5] = zj;
+         tmp_a = ((u_long) za << 24) |
+             ((u_long) zb << 16) | ((u_long) zc << 8) | ((u_long) zd);
+         at[i].at_iaddr.s_addr = htonl(tmp_a);
+         at[i].if_index = netsnmp_access_interface_index_find(ifname);
++        
++        for (j=0,tok=strtok(mac, ":"); tok != NULL; tok=strtok(NULL, ":"),j++) {
++        	at[i].at_enaddr[j] = strtol(tok, NULL, 16);
++        }
++        at[i].at_enaddr_len = j;
+         i++;
+     }
+     arptab_size = i;
+@@ -716,11 +719,12 @@ ARP_Scan_Init(void)
+ 
+ #ifdef ARP_SCAN_FOUR_ARGUMENTS
+ static int
+-ARP_Scan_Next(in_addr_t * IPAddr, char *PhysAddr, u_long * ifType,
+-              u_short * ifIndex)
++ARP_Scan_Next(in_addr_t * IPAddr, char *PhysAddr, int *PhysAddrLen,
++              u_long * ifType, u_short * ifIndex)
+ #else
+ static int
+-ARP_Scan_Next(in_addr_t * IPAddr, char *PhysAddr, u_long * ifType)
++ARP_Scan_Next(in_addr_t * IPAddr, char *PhysAddr, int *PhysAddrLen,
++              u_long * ifType)
+ #endif
+ {
+ #ifndef NETSNMP_CAN_USE_SYSCTL
+@@ -736,6 +740,7 @@ ARP_Scan_Next(in_addr_t * IPAddr, char *PhysAddr, u_long * ifType)
+         *ifIndex = at[arptab_current].if_index;
+         memcpy(PhysAddr, &at[arptab_current].at_enaddr,
+                sizeof(at[arptab_current].at_enaddr));
++        *PhysAddrLen = at[arptab_current].at_enaddr_len;
+ 
+         /*
+          * increment to point next entry 
+@@ -756,6 +761,7 @@ ARP_Scan_Next(in_addr_t * IPAddr, char *PhysAddr, u_long * ifType)
+                at[arptab_current].PhysAddr.o_length);
+         *ifType = at[arptab_current].Type;
+         *ifIndex = at[arptab_current].IfIndex;
++        *PhysAddrLen = at[arptab_current].PhysAddr.o_length;
+         /*
+          * increment to point next entry 
+          */
+@@ -808,10 +814,12 @@ ARP_Scan_Next(in_addr_t * IPAddr, char *PhysAddr, u_long * ifType)
+ #if defined (sunV3) || defined(sparc) || defined(hpux)
+         memcpy(PhysAddr, (char *) &atab->at_enaddr,
+                sizeof(atab->at_enaddr));
++        *PhysAddrLen = sizeof(atab->at_enaddr);
+ #endif
+ #if defined(mips) || defined(ibm032)
+         memcpy(PhysAddr, (char *) atab->at_enaddr,
+                sizeof(atab->at_enaddr));
++        *PhysAddrLen = sizeof(atab->at_enaddr);
+ #endif
+         return (1);
+     }
+@@ -836,6 +844,7 @@ ARP_Scan_Next(in_addr_t * IPAddr, char *PhysAddr, u_long * ifType)
+             *IPAddr = sin->sin_addr.s_addr;
+ #endif
+             memcpy(PhysAddr, (char *) LLADDR(sdl), sdl->sdl_alen);
++            *PhysAddrLen = sdl->sdl_alen;
+             *ifIndex = sdl->sdl_index;
+             *ifType = 1;        /* XXX */
+             return (1);
+diff --git a/net-snmp/agent/mibgroup/mibII/at.h b/net-snmp/agent/mibgroup/mibII/at.h
+index e3bd088..5bee2eb 100644
+--- net-snmp/agent/mibgroup/mibII/at.h
++++ net-snmp/agent/mibgroup/mibII/at.h
+@@ -31,13 +31,17 @@ config_arch_require(solaris2, kernel_sunos5)
+ # define ATF_COM	0x02
+ #endif                          /*  ATF_COM */
+ 
++/* InfiniBand uses HW addr > 6 */
++#define MAX_MAC_ADDR_LEN 32 
++
+ #if defined(linux) || defined(irix6)
+ /*
+  * arp struct to pass flags, hw-addr and ip-addr in bsd manner:
+  */
+      struct arptab {
+          int             at_flags;
+-         char            at_enaddr[6];
++         char            at_enaddr[MAX_MAC_ADDR_LEN];
++         int             at_enaddr_len;
+          struct in_addr  at_iaddr;
+          int             if_index;
+      };

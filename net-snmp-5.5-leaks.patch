@@ -1,0 +1,87 @@
+518633 -  snmpd leaks memory
+
+Fix several memory leaks.
+
+SVN rev. 17861, 17795, 18005.
+
+diff --git a/net-snmp/agent/mibgroup/tcp-mib/tcpConnectionTable/tcpConnectionTable.c b/net-snmp/agent/mibgroup/tcp-mib/tcpConnectionTable/tcpConnectionTable.c
+index 7259bf8..e274d19 100644
+--- net-snmp/agent/mibgroup/tcp-mib/tcpConnectionTable/tcpConnectionTable.c
++++ net-snmp/agent/mibgroup/tcp-mib/tcpConnectionTable/tcpConnectionTable.c
+@@ -155,6 +155,8 @@ tcpConnectionTable_rowreq_ctx_cleanup(tcpConnectionTable_rowreq_ctx *
+     /*
+      * TODO:211:o: |-> Perform extra tcpConnectionTable rowreq cleanup.
+      */
++    netsnmp_access_tcpconn_entry_free(rowreq_ctx->data);
++    rowreq_ctx->data = NULL;
+ }                               /* tcpConnectionTable_rowreq_ctx_cleanup */
+ 
+ /**
+diff --git a/net-snmp/agent/mibgroup/tcp-mib/tcpConnectionTable/tcpConnectionTable_data_access.c b/net-snmp/agent/mibgroup/tcp-mib/tcpConnectionTable/tcpConnectionTable_data_access.c
+index 807dd9d..fec6bef 100644
+--- net-snmp/agent/mibgroup/tcp-mib/tcpConnectionTable/tcpConnectionTable_data_access.c
++++ net-snmp/agent/mibgroup/tcp-mib/tcpConnectionTable/tcpConnectionTable_data_access.c
+@@ -256,7 +256,8 @@ tcpConnectionTable_container_load(netsnmp_container *container)
+      * free the container. we've either claimed each entry, or released it,
+      * so the dal function doesn't need to clear the container.
+      */
+-    netsnmp_access_tcpconn_container_free(raw_data, 0);
++    netsnmp_access_tcpconn_container_free(raw_data,
++                                          NETSNMP_ACCESS_TCPCONN_FREE_DONT_CLEAR);
+ 
+     DEBUGMSGT(("verbose:tcpConnectionTable:tcpConnectionTable_cache_load",
+                "%d records\n", (int)CONTAINER_SIZE(container)));
+diff --git a/net-snmp/agent/mibgroup/tcp-mib/tcpListenerTable/tcpListenerTable.c b/net-snmp/agent/mibgroup/tcp-mib/tcpListenerTable/tcpListenerTable.c
+index f3009dd..ebd672b 100644
+--- net-snmp/agent/mibgroup/tcp-mib/tcpListenerTable/tcpListenerTable.c
++++ net-snmp/agent/mibgroup/tcp-mib/tcpListenerTable/tcpListenerTable.c
+@@ -154,6 +154,8 @@ tcpListenerTable_rowreq_ctx_cleanup(tcpListenerTable_rowreq_ctx *
+     /*
+      * TODO:211:o: |-> Perform extra tcpListenerTable rowreq cleanup.
+      */
++    netsnmp_access_tcpconn_entry_free(rowreq_ctx->data);
++    rowreq_ctx->data = NULL;
+ }                               /* tcpListenerTable_rowreq_ctx_cleanup */
+ 
+ /**
+diff --git a/net-snmp/agent/mibgroup/tcp-mib/tcpListenerTable/tcpListenerTable_data_access.c b/net-snmp/agent/mibgroup/tcp-mib/tcpListenerTable/tcpListenerTable_data_access.c
+index 09ba655..b25d5db 100644
+--- net-snmp/agent/mibgroup/tcp-mib/tcpListenerTable/tcpListenerTable_data_access.c
++++ net-snmp/agent/mibgroup/tcp-mib/tcpListenerTable/tcpListenerTable_data_access.c
+@@ -254,7 +254,8 @@ tcpListenerTable_container_load(netsnmp_container *container)
+      * free the container. we've either claimed each entry, or released it,
+      * so the dal function doesn't need to clear the container.
+      */
+-    netsnmp_access_tcpconn_container_free(raw_data, 0);
++    netsnmp_access_tcpconn_container_free(raw_data,
++                                          NETSNMP_ACCESS_TCPCONN_FREE_DONT_CLEAR);
+ 
+     DEBUGMSGT(("verbose:tcpListenerTable:tcpListenerTable_cache_load",
+                "%d records\n", (int)CONTAINER_SIZE(container)));
+diff --git a/net-snmp/snmplib/snmp_client.c b/net-snmp/snmplib/snmp_client.c
+index 36f52e2..1cc1d03 100644
+--- net-snmp/snmplib/snmp_client.c
++++ net-snmp/snmplib/snmp_client.c
+@@ -653,8 +653,7 @@ snmp_set_var_objid(netsnmp_variable_list * vp,
+ {
+     size_t          len = sizeof(oid) * name_length;
+ 
+-    if (vp->name != vp->name_loc && vp->name != NULL &&
+-        vp->name_length > (sizeof(vp->name_loc) / sizeof(oid))) {
++    if (vp->name != vp->name_loc && vp->name != NULL) {
+         /*
+          * Probably previously-allocated "big storage".  Better free it
+          * else memory leaks possible.  
+diff --git a/net-snmp/agent/mibgroup/if-mib/data_access/interface_linux.c b/net-snmp/agent/mibgroup/if-mib/data_access/interface_linux.c
+index a363f40..33081be 100644
+--- net-snmp/agent/mibgroup/if-mib/data_access/interface_linux.c
++++ net-snmp/agent/mibgroup/if-mib/data_access/interface_linux.c
+@@ -1058,7 +1058,7 @@ void *netsnmp_prefix_listen(void *formal)
+               if(!(new = net_snmp_create_prefix_info (onlink, autonomous, in6pAddr)))
+                  DEBUGMSGTL(("access:interface:prefix", "Unable to create prefix info\n"));
+               else {
+-                    iret = net_snmp_update_prefix_info (listen_info->list_head, new, listen_info->lockinfo);
++                    iret = net_snmp_search_update_prefix_info (listen_info->list_head, new, 0, listen_info->lockinfo);
+                     if(iret < 0) {
+                        DEBUGMSGTL(("access:interface:prefix", "Unable to add/update prefix info\n"));
+                        free(new);

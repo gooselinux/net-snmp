@@ -1,0 +1,162 @@
+561884: net-snmpd reports wrong speed for disconnected interfaces
+
+Source: upstream, SVN rev. 18099
+
+Index: net-snmp/include/net-snmp/data_access/interface.h
+===================================================================
+--- net-snmp/include/net-snmp/data_access/interface.h	(revision 18098)
++++ net-snmp/include/net-snmp/data_access/interface.h	(revision 18099)
+@@ -71,6 +71,9 @@
+ 
+ #endif                          /* ifOperStatus_ENUMS */
+ 
++/* nominal speed of network interface - used when the real speed is unknown */
++#define NOMINAL_LINK_SPEED 10000000
++
+ /**---------------------------------------------------------------------*/
+ /*
+  * structure definitions
+Index: net-snmp/agent/mibgroup/if-mib/data_access/interface_linux.c
+===================================================================
+--- net-snmp/agent/mibgroup/if-mib/data_access/interface_linux.c	(revision 18098)
++++ net-snmp/agent/mibgroup/if-mib/data_access/interface_linux.c	(revision 18099)
+@@ -61,10 +61,12 @@
+ #endif  /* HAVE_PTHREAD_H && HAVE_LINUX_RTNETLINK_H */
+ #endif  /* NETSNMP_ENABLE_IPV6 */
+ unsigned long long
+-netsnmp_linux_interface_get_if_speed(int fd, const char *name);
++netsnmp_linux_interface_get_if_speed(int fd, const char *name,
++        unsigned long long defaultspeed);
+ #ifdef HAVE_LINUX_ETHTOOL_H
+ unsigned long long
+-netsnmp_linux_interface_get_if_speed_mii(int fd, const char *name);
++netsnmp_linux_interface_get_if_speed_mii(int fd, const char *name,
++        unsigned long long defaultspeed);
+ #endif
+ 
+ #define PROC_SYS_NET_IPVx_NEIGH_RETRANS_TIME_MS "/proc/sys/net/ipv%d/neigh/%s/retrans_time_ms"
+@@ -694,7 +696,17 @@
+         }
+ 
+         if (IANAIFTYPE_ETHERNETCSMACD == entry->type) {
+-            unsigned long long speed = netsnmp_linux_interface_get_if_speed(fd, entry->name);
++            unsigned long long speed;
++            unsigned long long defaultspeed = NOMINAL_LINK_SPEED;
++            if (!(entry->os_flags & IFF_RUNNING)) {
++                /*
++                 * use speed 0 if the if speed cannot be determined *and* the
++                 * interface is down
++                 */
++                defaultspeed = 0;
++            }
++            speed = netsnmp_linux_interface_get_if_speed(fd,
++                    entry->name, defaultspeed);
+             if (speed > 0xffffffffL) {
+                 entry->speed = 0xffffffff;
+             } else
+@@ -789,7 +801,8 @@
+  * Determines network interface speed from ETHTOOL_GSET
+  */
+ unsigned long long
+-netsnmp_linux_interface_get_if_speed(int fd, const char *name)
++netsnmp_linux_interface_get_if_speed(int fd, const char *name,
++            unsigned long long defaultspeed)
+ {
+     struct ifreq ifr;
+     struct ethtool_cmd edata;
+@@ -804,7 +817,7 @@
+     if (ioctl(fd, SIOCETHTOOL, &ifr) == -1) {
+         DEBUGMSGTL(("mibII/interfaces", "ETHTOOL_GSET on %s failed\n",
+                     ifr.ifr_name));
+-        return netsnmp_linux_interface_get_if_speed_mii(fd,name);
++        return netsnmp_linux_interface_get_if_speed_mii(fd,name,defaultspeed);
+     }
+     
+     if (edata.speed != SPEED_10 && edata.speed != SPEED_100
+@@ -818,7 +831,7 @@
+         DEBUGMSGTL(("mibII/interfaces", "fallback to mii for %s\n",
+                     ifr.ifr_name));
+         /* try MII */
+-        return netsnmp_linux_interface_get_if_speed_mii(fd,name);
++        return netsnmp_linux_interface_get_if_speed_mii(fd,name,defaultspeed);
+     }
+ 
+     /* return in bps */
+@@ -833,12 +846,14 @@
+  */
+ unsigned long long
+ #ifdef HAVE_LINUX_ETHTOOL_H
+-netsnmp_linux_interface_get_if_speed_mii(int fd, const char *name)
++netsnmp_linux_interface_get_if_speed_mii(int fd, const char *name,
++        unsigned long long  defaultspeed)
+ #else
+-netsnmp_linux_interface_get_if_speed(int fd, const char *name)
++netsnmp_linux_interface_get_if_speed(int fd, const char *name,
++        unsigned long long defaultspeed)
+ #endif
+ {
+-    unsigned long long retspeed = 10000000;
++    unsigned long long retspeed = defaultspeed;
+     struct ifreq ifr;
+ 
+     /* the code is based on mii-diag utility by Donald Becker
+Index: net-snmp/agent/mibgroup/mibII/interfaces.c
+===================================================================
+--- net-snmp/agent/mibgroup/mibII/interfaces.c	(revision 18098)
++++ net-snmp/agent/mibgroup/mibII/interfaces.c	(revision 18099)
+@@ -1439,16 +1439,17 @@
+ * Determines network interface speed. It is system specific. Only linux
+ * realization is made. 
+ */
+-unsigned int getIfSpeed(int fd, struct ifreq ifr)
++unsigned int getIfSpeed(int fd, struct ifreq ifr, unsigned int defaultspeed)
+ {
+ #ifdef linux
+     /** temporary expose internal until this module can be re-written */
+     extern unsigned int
+-        netsnmp_linux_interface_get_if_speed(int fd, const char *name);
++        netsnmp_linux_interface_get_if_speed(int fd, const char *name,
++                unsigned long long defaultspeed);
+ 
+-    return netsnmp_linux_interface_get_if_speed(fd, ifr.ifr_name);
++    return netsnmp_linux_interface_get_if_speed(fd, ifr.ifr_name, defaultspeed);
+ #else /*!linux*/			   
+-    return 10000000;
++    return defaultspeed;
+ #endif 
+ }
+ 
+@@ -1769,11 +1770,30 @@
+              * do only guess if_type from name, if we could not read
+              * * it before from SIOCGIFHWADDR 
+              */
++            unsigned int defaultspeed = NOMINAL_LINK_SPEED;
++                if (!(nnew->if_flags & IFF_RUNNING)) {
++                    /* 
++                     * use speed 0 if the if speed cannot be determined *and* the
++                     * interface is down
++                     */
++                    defaultspeed = 0;
++                }
++
+             if (!nnew->if_type)
+                 nnew->if_type = if_type_from_name(nnew->if_name);
+-            nnew->if_speed = nnew->if_type == 6 ? getIfSpeed(fd, ifrq) :
+-                nnew->if_type == 24 ? 10000000 :
+-                nnew->if_type == 9 ? 4000000 : 0;
++            switch(nnew->if_type) {
++            case 6:
++                nnew->if_speed = getIfSpeed(fd, ifrq, defaultspeed);
++                break;
++            case 24:
++                nnew->if_speed = 10000000;
++                break;
++            case 9:
++                nnew->if_speed = 4000000;
++                break;
++            default:
++                nnew->if_speed = 0;
++            }
+             /*Zero speed means link problem*/
+             if(nnew->if_speed == 0 && nnew->if_flags & IFF_UP){
+                 nnew->if_flags &= ~IFF_RUNNING;

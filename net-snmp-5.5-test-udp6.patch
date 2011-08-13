@@ -1,0 +1,85 @@
+581873 - net-snmp source package tests fail for tcp6 and udp6
+
+Source: upstream, SVN rev. 18501
+
+Index: net-snmp/testing/tests/T120proxyget
+===================================================================
+--- net-snmp/testing/tests/T120proxyget	(revision 18500)
++++ net-snmp/testing/tests/T120proxyget	(revision 18501)
+@@ -39,6 +39,9 @@
+   SNMP_SNMPD_LOG_FILE=$SNMP_SNMPD_LOG_FILE.num2
+   SNMP_CONFIG_FILE="$SNMP_TMPDIR/proxy.conf"
+   echo "rwcommunity testcommunity" >> $SNMP_CONFIG_FILE
++  if [ "$SNMP_TRANSPORT_SPEC" = "udp6" -o "$SNMP_TRANSPORT_SPEC" = "tcp6" ];then
++    echo "rwcommunity6 testcommunity" >> $SNMP_CONFIG_FILE
++  fi
+   AGENT_FLAGS=$ORIG_AGENT_FLAGS
+   ORIG_SNMP_SNMPD_PORT=$SNMP_SNMPD_PORT
+   SNMP_SNMPD_PORT="${SNMP_AGENTX_PORT}"
+Index: net-snmp/testing/tests/Svacmconfig
+===================================================================
+--- net-snmp/testing/tests/Svacmconfig	(revision 18500)
++++ net-snmp/testing/tests/Svacmconfig	(revision 18501)
+@@ -18,6 +18,8 @@
+ CONFIGAGENT com2sec testcommunitysec2  default testcommunity2
+ 
+ if [ "$SNMP_TRANSPORT_SPEC" = "udp6" -o "$SNMP_TRANSPORT_SPEC" = "tcp6" ];then 
++CONFIGAGENT rocommunity6 testrocommunity ::1 .1.3.6.1.2.1.1.5.0
++CONFIGAGENT rwcommunity6 testrwcommunity ::1 .1.3.6.1.2.1.1.5.0
+ CONFIGAGENT com2sec6 testcommunitysec1  default testcommunity1
+ CONFIGAGENT com2sec6 testcommunitysec2  default testcommunity2
+ fi
+Index: net-snmp/testing/tests/T121proxyset
+===================================================================
+--- net-snmp/testing/tests/T121proxyset	(revision 18500)
++++ net-snmp/testing/tests/T121proxyset	(revision 18501)
+@@ -39,6 +39,9 @@
+   SNMP_SNMPD_LOG_FILE=$SNMP_SNMPD_LOG_FILE.num2
+   SNMP_CONFIG_FILE="$SNMP_TMPDIR/proxy.conf"
+   echo "rwcommunity testcommunity" >> $SNMP_CONFIG_FILE
++  if [ "$SNMP_TRANSPORT_SPEC" = "udp6" -o "$SNMP_TRANSPORT_SPEC" = "tcp6" ];then
++    echo "rwcommunity6 testcommunity" >> $SNMP_CONFIG_FILE
++  fi
+   echo "psyscontact testcontact" >> $SNMP_CONFIG_FILE
+   AGENT_FLAGS="$ORIG_AGENT_FLAGS -Dmib_init"
+   ORIG_SNMP_SNMPD_PORT=$SNMP_SNMPD_PORT
+Index: net-snmp/testing/tests/T122proxysetfail
+===================================================================
+--- net-snmp/testing/tests/T122proxysetfail	(revision 18500)
++++ net-snmp/testing/tests/T122proxysetfail	(revision 18501)
+@@ -39,6 +39,9 @@
+   SNMP_SNMPD_LOG_FILE=$SNMP_SNMPD_LOG_FILE.num2
+   SNMP_CONFIG_FILE="$SNMP_TMPDIR/proxy.conf"
+   echo "rwcommunity testcommunity" >> $SNMP_CONFIG_FILE
++  if [ "$SNMP_TRANSPORT_SPEC" = "udp6" -o "$SNMP_TRANSPORT_SPEC" = "tcp6" ];then
++    echo "rwcommunity6 testcommunity" >> $SNMP_CONFIG_FILE
++  fi
+ #  echo "syscontact testcontact" >> $SNMP_CONFIG_FILE
+   AGENT_FLAGS="$ORIG_AGENT_FLAGS -Dmib_init"
+   ORIG_SNMP_SNMPD_PORT=$SNMP_SNMPD_PORT
+Index: net-snmp/testing/tests/T120proxyget
+===================================================================
+--- net-snmp/testing/tests/T120proxyget	(revision 18505)
++++ net-snmp/testing/tests/T120proxyget	(revision 18506)
+@@ -9,7 +9,7 @@
+ SKIPIF NETSNMP_DISABLE_SNMPV2C
+ 
+ # XXX: ucd-snmp/proxy doesn't properly support TCP -- remove this once it does
+-[ "x$SNMP_TRANSPORT_SPEC" = "xtcp" ] && SKIP
++[ "x$SNMP_TRANSPORT_SPEC" = "xtcp" -o "x$SNMP_TRANSPORT_SPEC" = "xtcp6" ] && SKIP
+ 
+ #
+ # Begin test
+Index: net-snmp/testing/tests/T121proxyset
+===================================================================
+--- net-snmp/testing/tests/T121proxyset	(revision 18505)
++++ net-snmp/testing/tests/T121proxyset	(revision 18506)
+@@ -9,7 +9,7 @@
+ SKIPIF NETSNMP_DISABLE_SNMPV2C
+ 
+ # XXX: ucd-snmp/proxy doesn't properly support TCP -- remove this once it does
+-[ "x$SNMP_TRANSPORT_SPEC" = "xtcp" ] && SKIP
++[ "x$SNMP_TRANSPORT_SPEC" = "xtcp" -o "x$SNMP_TRANSPORT_SPEC" = "xtcp6" ] && SKIP
+ 
+ #
+ # Begin test

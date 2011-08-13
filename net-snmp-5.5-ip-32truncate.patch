@@ -1,0 +1,91 @@
+507528: CRM #1909010 [netsnmp] snmpd truncation errors
+
+Source: upstream, svn. rev. 17824.
+
+diff --git a/net-snmp/agent/mibgroup/mibII/ip.c b/net-snmp/agent/mibgroup/mibII/ip.c
+index 0033b0e..e2f4dc0 100644
+--- net-snmp/agent/mibgroup/mibII/ip.c
++++ net-snmp/agent/mibgroup/mibII/ip.c
+@@ -309,7 +309,7 @@ ip_handler(netsnmp_mib_handler          *handler,
+         type = ASN_INTEGER;
+         break;
+     case IPINRECEIVES:
+-        ret_value = ipstat.ipInReceives;
++        ret_value = ipstat.ipInReceives & 0xffffffff;
+         break;
+     case IPINHDRERRORS:
+         ret_value = ipstat.ipInHdrErrors;
+@@ -327,10 +327,10 @@ ip_handler(netsnmp_mib_handler          *handler,
+         ret_value = ipstat.ipInDiscards;
+         break;
+     case IPINDELIVERS:
+-        ret_value = ipstat.ipInDelivers;
++        ret_value = ipstat.ipInDelivers & 0xffffffff;
+         break;
+     case IPOUTREQUESTS:
+-        ret_value = ipstat.ipOutRequests;
++        ret_value = ipstat.ipOutRequests & 0xffffffff;
+         break;
+     case IPOUTDISCARDS:
+         ret_value = ipstat.ipOutDiscards;
+@@ -385,7 +385,7 @@ ip_handler(netsnmp_mib_handler          *handler,
+         type = ASN_INTEGER;
+         break;
+     case IPINRECEIVES:
+-        ret_value = ipstat.ips_total;
++        ret_value = ipstat.ips_total & 0xffffffff;
+         break;
+     case IPINHDRERRORS:
+         ret_value = ipstat.ips_badsum
+@@ -416,7 +416,7 @@ ip_handler(netsnmp_mib_handler          *handler,
+ #endif
+     case IPINDELIVERS:
+ #if HAVE_STRUCT_IPSTAT_IPS_DELIVERED
+-        ret_value = ipstat.ips_delivered;
++        ret_value = ipstat.ips_delivered & 0xffffffff;
+         break;
+ #else
+         netsnmp_set_request_error(reqinfo, request, SNMP_NOSUCHOBJECT);
+@@ -424,7 +424,7 @@ ip_handler(netsnmp_mib_handler          *handler,
+ #endif
+     case IPOUTREQUESTS:
+ #if HAVE_STRUCT_IPSTAT_IPS_LOCALOUT
+-        ret_value = ipstat.ips_localout;
++        ret_value = ipstat.ips_localout & 0xffffffff;
+         break;
+ #else
+         netsnmp_set_request_error(reqinfo, request, SNMP_NOSUCHOBJECT);
+diff --git a/net-snmp/agent/mibgroup/mibII/tcp.c b/net-snmp/agent/mibgroup/mibII/tcp.c
+index 3c2f344..850d109 100644
+--- net-snmp/agent/mibgroup/mibII/tcp.c
++++ net-snmp/agent/mibgroup/mibII/tcp.c
+@@ -272,10 +272,10 @@ tcp_handler(netsnmp_mib_handler          *handler,
+         type = ASN_GAUGE;
+         break;
+     case TCPINSEGS:
+-        ret_value = tcpstat.tcpInSegs;
++        ret_value = tcpstat.tcpInSegs & 0xffffffff;
+         break;
+     case TCPOUTSEGS:
+-        ret_value = tcpstat.tcpOutSegs;
++        ret_value = tcpstat.tcpOutSegs & 0xffffffff;
+         break;
+     case TCPRETRANSSEGS:
+         ret_value = tcpstat.tcpRetransSegs;
+@@ -366,14 +366,14 @@ tcp_handler(netsnmp_mib_handler          *handler,
+         type = ASN_GAUGE;
+         break;
+     case TCPINSEGS:
+-        ret_value = tcpstat.tcps_rcvtotal;
++        ret_value = tcpstat.tcps_rcvtotal & 0xffffffff;
+         break;
+     case TCPOUTSEGS:
+         /*
+          * RFC 1213 defines this as the number of segments sent
+          * "excluding those containing only retransmitted octets"
+          */
+-        ret_value = tcpstat.tcps_sndtotal - tcpstat.tcps_sndrexmitpack;
++        ret_value = (tcpstat.tcps_sndtotal - tcpstat.tcps_sndrexmitpack) & 0xffffffff;
+         break;
+     case TCPRETRANSSEGS:
+         ret_value = tcpstat.tcps_sndrexmitpack;

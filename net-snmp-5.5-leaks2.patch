@@ -1,0 +1,54 @@
+591005  - memory leak in snmpd
+
+Source: upstream, SVN rev. 18713, 18714 and 18724
+
+Index: agent/mibgroup/tcp-mib/tcpConnectionTable/tcpConnectionTable_data_access.c
+===================================================================
+--- net-snmp/agent/mibgroup/tcp-mib/tcpConnectionTable/tcpConnectionTable_data_access.c	(revision 18713)
++++ net-snmp/agent/mibgroup/tcp-mib/tcpConnectionTable/tcpConnectionTable_data_access.c	(revision 18714)
+@@ -187,7 +187,12 @@
+                                                        entry->rmt_addr,
+                                                        entry->rmt_addr_len,
+                                                        entry->rmt_port))) {
+-        CONTAINER_INSERT(container, rowreq_ctx);
++        if (CONTAINER_INSERT(container, rowreq_ctx)) {
++            NETSNMP_LOGONCE((LOG_DEBUG,
++                    "Error inserting entry to tcpConnectionTable,"\
++                    " entry already exists."));
++            tcpConnectionTable_release_rowreq_ctx(rowreq_ctx);
++        }
+     } else {
+         if (rowreq_ctx) {
+             snmp_log(LOG_ERR, "error setting index while loading "
+Index: agent/mibgroup/hardware/sensors/lmsensors_v3.c
+===================================================================
+--- net-snmp/agent/mibgroup/hardware/sensors/lmsensors_v3.c	(revision 18712)
++++ net-snmp/agent/mibgroup/hardware/sensors/lmsensors_v3.c	(revision 18713)
+@@ -75,6 +75,8 @@
+                 if (!(label = sensors_get_label(chip, data)) ||
+                      (sensors_get_value(chip, data2->number, &val) < 0)) {
+                     DEBUGMSGTL(("sensors:arch:detail", "  Can't get name/value (%s, %f)\n", label, val));
++                    free(label);
++                    label = NULL;
+                     continue;
+                 }
+                 DEBUGMSGTL(("sensors:arch:detail", "%s = %f\n", label, val));
+Index: include/net-snmp/library/snmp_logging.h
+===================================================================
+--- net-snmp/include/net-snmp/library/snmp_logging.h	(revision 18723)
++++ net-snmp/include/net-snmp/library/snmp_logging.h	(revision 18724)
+@@ -31,6 +31,14 @@
+ #define DEFAULT_LOG_ID "net-snmp"
+ #endif
+ 
++#define NETSNMP_LOGONCE(x) do { \
++        static char logged = 0; \
++        if (!logged) {          \
++            logged = 1;         \
++            snmp_log x ;        \
++        }                       \
++    } while(0)
++
+     void            init_snmp_logging(void);
+     void            shutdown_snmp_logging(void);
+     int             snmp_get_do_logging(void);

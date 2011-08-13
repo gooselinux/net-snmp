@@ -1,0 +1,17 @@
+607074:  [6.0] snmpwalk reports an incorrect result of ipv6InterfaceForwarding
+
+Source: upstream, SVN rev. 19082
+
+Index: net-snmp/agent/mibgroup/ip-mib/ipv6InterfaceTable/ipv6InterfaceTable.c
+===================================================================
+--- net-snmp/agent/mibgroup/ip-mib/ipv6InterfaceTable/ipv6InterfaceTable.c	(revision 19081)
++++ net-snmp/agent/mibgroup/ip-mib/ipv6InterfaceTable/ipv6InterfaceTable.c	(revision 19082)
+@@ -687,7 +687,7 @@
+      * copy (* ipv6InterfaceForwarding_val_ptr ) from rowreq_ctx->data
+      */
+     (*ipv6InterfaceForwarding_val_ptr) =
+-        rowreq_ctx->data.ipv6InterfaceForwarding;
++        (rowreq_ctx->data.ipv6InterfaceForwarding) ? 1 : 2;
+ 
+     return MFD_SUCCESS;
+ }                               /* ipv6InterfaceForwarding_get */

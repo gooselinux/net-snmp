@@ -1,0 +1,20 @@
+527364: inconsistentName error for the oid with the number greater than 255
+
+Source: upstream SVN rev. 17791
+
+diff --git a/net-snmp/agent/mibgroup/mibII/vacm_vars.c b/net-snmp/agent/mibgroup/mibII/vacm_vars.c
+index 4befc99..7962fb3 100644
+--- net-snmp/agent/mibgroup/mibII/vacm_vars.c
++++ net-snmp/agent/mibgroup/mibII/vacm_vars.c
+@@ -1551,11 +1551,6 @@ view_parse_oid(oid * oidIndex, size_t oidLen,
+     viewName[0][viewNameL] = 0;
+ 
+     for (i = 0; i < subtreeL; i++) {
+-	if (oidIndex[i + viewNameL + 1] > 255) {
+-	    free(*viewName);
+-	    free(*subtree);
+-	    return SNMP_ERR_INCONSISTENTNAME;
+-	}
+         subtree[0][i] = (oid) oidIndex[i + viewNameL + 1];
+     }
+ 

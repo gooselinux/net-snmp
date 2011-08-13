@@ -1,0 +1,28 @@
+diff -up net-snmp-5.5/agent/mibgroup/hardware/fsys/fsys_mntent.c.orig net-snmp-5.5/agent/mibgroup/hardware/fsys/fsys_mntent.c
+--- net-snmp-5.5/agent/mibgroup/hardware/fsys/fsys_mntent.c.orig	2010-07-26 16:01:09.419371154 +0200
++++ net-snmp-5.5/agent/mibgroup/hardware/fsys/fsys_mntent.c	2010-07-26 16:00:35.000000000 +0200
+@@ -131,6 +131,8 @@ _fsys_type( char *typename )
+      */    
+     else if ( !strcmp(typename, MNTTYPE_MVFS) ||
+               !strcmp(typename, MNTTYPE_TMPFS) ||
++              !strcmp(typename, MNTTYPE_GFS) ||
++              !strcmp(typename, MNTTYPE_GFS2) ||
+               !strcmp(typename, MNTTYPE_LOFS))
+        return NETSNMP_FS_TYPE_OTHER;
+ 
+diff -up net-snmp-5.5/agent/mibgroup/hardware/fsys/mnttypes.h.orig net-snmp-5.5/agent/mibgroup/hardware/fsys/mnttypes.h
+--- net-snmp-5.5/agent/mibgroup/hardware/fsys/mnttypes.h.orig	2010-07-26 16:01:16.505622249 +0200
++++ net-snmp-5.5/agent/mibgroup/hardware/fsys/mnttypes.h	2010-07-26 15:59:51.000000000 +0200
+@@ -108,6 +108,12 @@
+ #ifndef MNTTYPE_VFAT
+ #define MNTTYPE_VFAT     "vfat"
+ #endif
++#ifndef MNTTYPE_GFS
++#define MNTTYPE_GFS      "gfs"
++#endif
++#ifndef MNTTYPE_GFS2
++#define MNTTYPE_GFS2     "gfs2"
++#endif
+ 
+ /*
+  *  File systems to monitor, but not covered by HR-TYPES enumerations

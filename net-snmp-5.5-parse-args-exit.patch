@@ -1,0 +1,615 @@
+574061 - snmpget return 0 return code on short passphrase error
+
+Source: upstream, SVN rev. 18365 and 18358
+
+diff -up net-snmp-5.5/apps/snmpbulkget.c.parse-arg-exit net-snmp-5.5/apps/snmpbulkget.c
+--- net-snmp-5.5/apps/snmpbulkget.c.parse-arg-exit	2002-04-20 09:30:29.000000000 +0200
++++ net-snmp-5.5/apps/snmpbulkget.c	2010-04-23 11:32:50.000000000 +0200
+@@ -152,9 +152,11 @@ main(int argc, char *argv[])
+      * get the common command line arguments 
+      */
+     switch (arg = snmp_parse_args(argc, argv, &session, "C:", optProc)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/apps/snmpbulkwalk.c.parse-arg-exit net-snmp-5.5/apps/snmpbulkwalk.c
+--- net-snmp-5.5/apps/snmpbulkwalk.c.parse-arg-exit	2002-05-15 14:40:57.000000000 +0200
++++ net-snmp-5.5/apps/snmpbulkwalk.c	2010-04-23 11:32:50.000000000 +0200
+@@ -209,9 +209,11 @@ main(int argc, char *argv[])
+      * get the common command line arguments 
+      */
+     switch (arg = snmp_parse_args(argc, argv, &session, "C:", optProc)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/apps/snmpdelta.c.parse-arg-exit net-snmp-5.5/apps/snmpdelta.c
+--- net-snmp-5.5/apps/snmpdelta.c.parse-arg-exit	2008-05-10 11:51:37.000000000 +0200
++++ net-snmp-5.5/apps/snmpdelta.c	2010-04-23 11:32:50.000000000 +0200
+@@ -408,9 +408,11 @@ main(int argc, char *argv[])
+     int             exit_code = 0;
+ 
+     switch (arg = snmp_parse_args(argc, argv, &session, "C:", &optProc)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/apps/snmpdf.c.parse-arg-exit net-snmp-5.5/apps/snmpdf.c
+--- net-snmp-5.5/apps/snmpdf.c.parse-arg-exit	2007-01-01 16:20:34.000000000 +0100
++++ net-snmp-5.5/apps/snmpdf.c	2010-04-23 11:32:50.000000000 +0200
+@@ -233,9 +233,11 @@ main(int argc, char *argv[])
+      * get the common command line arguments 
+      */
+     switch (arg = snmp_parse_args(argc, argv, &session, "C:", optProc)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/apps/snmpget.c.parse-arg-exit net-snmp-5.5/apps/snmpget.c
+--- net-snmp-5.5/apps/snmpget.c.parse-arg-exit	2007-01-01 16:20:34.000000000 +0100
++++ net-snmp-5.5/apps/snmpget.c	2010-04-23 11:32:50.000000000 +0200
+@@ -131,9 +131,11 @@ main(int argc, char *argv[])
+      * get the common command line arguments 
+      */
+     switch (arg = snmp_parse_args(argc, argv, &session, "C:", optProc)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/apps/snmpgetnext.c.parse-arg-exit net-snmp-5.5/apps/snmpgetnext.c
+--- net-snmp-5.5/apps/snmpgetnext.c.parse-arg-exit	2007-01-01 16:20:34.000000000 +0100
++++ net-snmp-5.5/apps/snmpgetnext.c	2010-04-23 11:32:50.000000000 +0200
+@@ -127,9 +127,11 @@ main(int argc, char *argv[])
+      * get the common command line arguments 
+      */
+     switch (arg = snmp_parse_args(argc, argv, &session, "C:", &optProc)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/apps/snmpnetstat/main.c.parse-arg-exit net-snmp-5.5/apps/snmpnetstat/main.c
+--- net-snmp-5.5/apps/snmpnetstat/main.c.parse-arg-exit	2009-04-23 02:01:31.000000000 +0200
++++ net-snmp-5.5/apps/snmpnetstat/main.c	2010-04-23 11:32:50.000000000 +0200
+@@ -316,11 +316,13 @@ main(int argc, char *argv[])
+             progname = argv[0];
+ 
+ 	switch (snmp_parse_args( argc, argv, &session, "C:iRs", optProc)) {
+-	case -2:
++	case NETSNMP_PARSE_ARGS_ERROR:
++	    exit(1);
++	case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+ 	    exit(0);
+-	case -1:
++	case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+ 	    usage();
+-	    exit(0);
++	    exit(1);
+ 	default:
+ 	    break;
+ 	}
+diff -up net-snmp-5.5/apps/snmpset.c.parse-arg-exit net-snmp-5.5/apps/snmpset.c
+--- net-snmp-5.5/apps/snmpset.c.parse-arg-exit	2008-07-28 12:56:04.000000000 +0200
++++ net-snmp-5.5/apps/snmpset.c	2010-04-23 11:32:50.000000000 +0200
+@@ -142,9 +142,11 @@ main(int argc, char *argv[])
+      * get the common command line arguments 
+      */
+     switch (arg = snmp_parse_args(argc, argv, &session, "C:", optProc)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/apps/snmpstatus.c.parse-arg-exit net-snmp-5.5/apps/snmpstatus.c
+--- net-snmp-5.5/apps/snmpstatus.c.parse-arg-exit	2005-12-01 13:45:28.000000000 +0100
++++ net-snmp-5.5/apps/snmpstatus.c	2010-04-23 11:32:50.000000000 +0200
+@@ -159,9 +159,11 @@ main(int argc, char *argv[])
+      * get the common command line arguments 
+      */
+     switch (snmp_parse_args(argc, argv, &session, "C:", &optProc)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/apps/snmptable.c.parse-arg-exit net-snmp-5.5/apps/snmptable.c
+--- net-snmp-5.5/apps/snmptable.c.parse-arg-exit	2009-08-05 12:16:34.000000000 +0200
++++ net-snmp-5.5/apps/snmptable.c	2010-04-23 11:32:50.000000000 +0200
+@@ -263,9 +263,11 @@ main(int argc, char *argv[])
+      * get the common command line arguments 
+      */
+     switch (snmp_parse_args(argc, argv, &session, "C:", optProc)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/apps/snmptest.c.parse-arg-exit net-snmp-5.5/apps/snmptest.c
+--- net-snmp-5.5/apps/snmptest.c.parse-arg-exit	2008-12-30 01:03:25.000000000 +0100
++++ net-snmp-5.5/apps/snmptest.c	2010-04-23 11:32:50.000000000 +0200
+@@ -102,9 +102,11 @@ main(int argc, char *argv[])
+      * get the common command line arguments 
+      */
+     switch (snmp_parse_args(argc, argv, &session, NULL, NULL)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/apps/snmptrap.c.parse-arg-exit net-snmp-5.5/apps/snmptrap.c
+--- net-snmp-5.5/apps/snmptrap.c.parse-arg-exit	2008-06-25 19:39:42.000000000 +0200
++++ net-snmp-5.5/apps/snmptrap.c	2010-04-23 11:32:50.000000000 +0200
+@@ -152,9 +152,11 @@ main(int argc, char *argv[])
+     if (strcmp(prognam, "snmpinform") == 0)
+         inform = 1;
+     switch (arg = snmp_parse_args(argc, argv, &session, "C:", optProc)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/apps/snmpusm.c.parse-arg-exit net-snmp-5.5/apps/snmpusm.c
+--- net-snmp-5.5/apps/snmpusm.c.parse-arg-exit	2009-02-18 19:52:41.000000000 +0100
++++ net-snmp-5.5/apps/snmpusm.c	2010-04-23 11:32:50.000000000 +0200
+@@ -380,9 +380,11 @@ main(int argc, char *argv[])
+      * get the common command line arguments 
+      */
+     switch (arg = snmp_parse_args(argc, argv, &session, "C:", optProc)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/apps/snmpvacm.c.parse-arg-exit net-snmp-5.5/apps/snmpvacm.c
+--- net-snmp-5.5/apps/snmpvacm.c.parse-arg-exit	2007-07-02 08:53:44.000000000 +0200
++++ net-snmp-5.5/apps/snmpvacm.c	2010-04-23 11:32:50.000000000 +0200
+@@ -289,9 +289,11 @@ main(int argc, char *argv[])
+      * get the common command line arguments 
+      */
+     switch (arg = snmp_parse_args(argc, argv, &session, "C:", optProc)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/apps/snmpwalk.c.parse-arg-exit net-snmp-5.5/apps/snmpwalk.c
+--- net-snmp-5.5/apps/snmpwalk.c.parse-arg-exit	2007-05-28 12:09:44.000000000 +0200
++++ net-snmp-5.5/apps/snmpwalk.c	2010-04-23 11:32:50.000000000 +0200
+@@ -213,9 +213,11 @@ main(int argc, char *argv[])
+      * get the common command line arguments 
+      */
+     switch (arg = snmp_parse_args(argc, argv, &session, "C:", optProc)) {
+-    case -2:
++    case NETSNMP_PARSE_ARGS_ERROR:
++        exit(1);
++    case NETSNMP_PARSE_ARGS_SUCCESS_EXIT:
+         exit(0);
+-    case -1:
++    case NETSNMP_PARSE_ARGS_ERROR_USAGE:
+         usage();
+         exit(1);
+     default:
+diff -up net-snmp-5.5/include/net-snmp/library/snmp_parse_args.h.parse-arg-exit net-snmp-5.5/include/net-snmp/library/snmp_parse_args.h
+--- net-snmp-5.5/include/net-snmp/library/snmp_parse_args.h.parse-arg-exit	2003-07-22 18:07:18.000000000 +0200
++++ net-snmp-5.5/include/net-snmp/library/snmp_parse_args.h	2010-04-23 11:32:50.000000000 +0200
+@@ -4,6 +4,34 @@
+ extern "C" {
+ #endif
+ 
++/**
++ * Parsing of command line arguments succeeded and application is expected
++ * to continue with normal operation.
++ */
++#define NETSNMP_PARSE_ARGS_SUCCESS       0
++/**
++  * Parsing of command line arguments succeeded, but the application is expected
++  * to exit with zero exit code. For example, '-V' parameter has been found.
++  */
++#define NETSNMP_PARSE_ARGS_SUCCESS_EXIT  -2
++/**
++ * Parsing of command line arguments failed and application is expected to show
++ * usage (i.e. list of parameters) and exit with nozero exit code..
++ */
++#define NETSNMP_PARSE_ARGS_ERROR_USAGE   -1
++/**
++ * Parsing of command line arguments failed and application is expected to exit
++ * with nozero exit code.  netsnmp_parse_args() has already printed what went
++ * wrong.
++ */
++#define NETSNMP_PARSE_ARGS_ERROR         -3
++
++/**
++ *  @return 0 on success, -1 on failure (usage should be printed), -2 on success
++ *  when the application termination is expected (like using -V parameter) and
++ *  -3 on failure, when netsnmp_parse_args already printed enough information
++ *  and no usage should be printed.
++ */
+ int
+ snmp_parse_args(int argc, char **argv, netsnmp_session *session,
+ 		const char *localOpts, void (*proc)(int, char *const *, int));
+diff -up net-snmp-5.5/snmplib/snmp_parse_args.c.parse-arg-exit net-snmp-5.5/snmplib/snmp_parse_args.c
+--- net-snmp-5.5/snmplib/snmp_parse_args.c.parse-arg-exit	2009-06-01 17:50:45.000000000 +0200
++++ net-snmp-5.5/snmplib/snmp_parse_args.c	2010-04-23 11:32:50.000000000 +0200
+@@ -242,11 +242,11 @@ snmp_parse_args(int argc,
+         switch (arg) {
+         case '-':
+             if (strcasecmp(optarg, "help") == 0) {
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+             if (strcasecmp(optarg, "version") == 0) {
+                 fprintf(stderr,"NET-SNMP version: %s\n",netsnmp_get_version());
+-                return (-2);
++                return (NETSNMP_PARSE_ARGS_SUCCESS_EXIT);
+             }
+ 
+             handle_long_opt(optarg);
+@@ -254,17 +254,17 @@ snmp_parse_args(int argc,
+ 
+         case 'V':
+             fprintf(stderr, "NET-SNMP version: %s\n", netsnmp_get_version());
+-            return (-2);
++            return (NETSNMP_PARSE_ARGS_SUCCESS_EXIT);
+ 
+         case 'h':
+-            return (-1);
++            return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             break;
+ 
+         case 'H':
+             init_snmp("snmpapp");
+             fprintf(stderr, "Configuration directives understood:\n");
+             read_config_print_usage("  ");
+-            return (-2);
++            return (NETSNMP_PARSE_ARGS_SUCCESS_EXIT);
+ 
+         case 'Y':
+             netsnmp_config_remember(optarg);
+@@ -286,7 +286,7 @@ snmp_parse_args(int argc,
+             if (cp != NULL) {
+                 fprintf(stderr, "Unknown output option passed to -O: %c.\n", 
+ 			*cp);
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+             break;
+ 
+@@ -295,7 +295,7 @@ snmp_parse_args(int argc,
+             if (cp != NULL) {
+                 fprintf(stderr, "Unknown input option passed to -I: %c.\n",
+ 			*cp);
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+             break;
+ 
+@@ -305,7 +305,7 @@ snmp_parse_args(int argc,
+             if (cp != NULL) {
+                 fprintf(stderr,
+                         "Unknown parsing option passed to -P: %c.\n", *cp);
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+             break;
+ #endif /* NETSNMP_DISABLE_MIB_LOADING */
+@@ -339,27 +339,27 @@ snmp_parse_args(int argc,
+                 fprintf(stderr,
+                         "Invalid version specified after -v flag: %s\n",
+                         optarg);
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+             break;
+ 
+         case 'p':
+             fprintf(stderr, "Warning: -p option is no longer used - ");
+             fprintf(stderr, "specify the remote host as HOST:PORT\n");
+-            return (-1);
++            return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             break;
+ 
+         case 'T':
+             fprintf(stderr, "Warning: -T option is no longer used - ");
+             fprintf(stderr, "specify the remote host as TRANSPORT:HOST\n");
+-            return (-1);
++            return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             break;
+ 
+         case 't':
+             session->timeout = (long)(atof(optarg) * 1000000L);
+             if (session->timeout <= 0) {
+                 fprintf(stderr, "Invalid timeout in seconds after -t flag.\n");
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+             break;
+ 
+@@ -367,7 +367,7 @@ snmp_parse_args(int argc,
+             session->retries = atoi(optarg);
+             if (session->retries < 0 || !isdigit(optarg[0])) {
+                 fprintf(stderr, "Invalid number of retries after -r flag.\n");
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+             break;
+ 
+@@ -379,7 +379,7 @@ snmp_parse_args(int argc,
+ 		    sp++;
+ 		} else {
+ 		    fprintf(stderr, "malloc failure processing -c flag.\n");
+-		    return -1;
++		    return NETSNMP_PARSE_ARGS_ERROR;
+ 		}
+ 	    } else {
+ 		Cpsz = optarg;
+@@ -389,13 +389,13 @@ snmp_parse_args(int argc,
+         case '3':
+ 	    /*  TODO: This needs to zero things too.  */
+             if (snmpv3_options(optarg, session, &Apsz, &Xpsz, argc, argv) < 0){
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+             break;
+ 
+         case 'L':
+             if (snmp_log_options(optarg, argc, argv) < 0) {
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+ 	    logopt = 1;
+             break;
+@@ -407,7 +407,7 @@ snmp_parse_args(int argc,
+             session->engineBoots = strtoul(optarg, &cp, 10);
+             if (errno || cp == optarg) {
+                 fprintf(stderr, "Need engine boots value after -Z flag.\n");
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+             if (*cp == ',') {
+                 char *endptr;
+@@ -415,7 +415,7 @@ snmp_parse_args(int argc,
+                 session->engineTime = strtoul(cp, &endptr, 10);
+                 if (errno || cp == endptr) {
+                     fprintf(stderr, "Need engine time after \"-Z engineBoot,\".\n");
+-                    return (-1);
++                    return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+                 }
+             }
+             /*
+@@ -425,11 +425,11 @@ snmp_parse_args(int argc,
+                 session->engineTime = strtoul(argv[optind], &cp, 10);
+                 if (errno || cp == argv[optind]) {
+                     fprintf(stderr, "Need engine time after \"-Z engineBoot\".\n");
+-                    return (-1);
++                    return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+                 }
+             } else {
+                 fprintf(stderr, "Need engine time after \"-Z engineBoot\".\n");
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+             break;
+ 
+@@ -439,18 +439,18 @@ snmp_parse_args(int argc,
+ 
+                 if (ebuf == NULL) {
+                     fprintf(stderr, "malloc failure processing -e flag.\n");
+-                    return (-1);
++                    return (NETSNMP_PARSE_ARGS_ERROR);
+                 }
+                 if (!snmp_hex_to_binary
+                     (&ebuf, &ebuf_len, &eout_len, 1, optarg)) {
+                     fprintf(stderr, "Bad engine ID value after -e flag.\n");
+                     free(ebuf);
+-                    return (-1);
++                    return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+                 }
+                 if ((eout_len < 5) || (eout_len > 32)) {
+                     fprintf(stderr, "Invalid engine ID value after -e flag.\n");
+                     free(ebuf);
+-                    return (-1);
++                    return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+                 }
+                 session->securityEngineID = ebuf;
+                 session->securityEngineIDLen = eout_len;
+@@ -463,18 +463,18 @@ snmp_parse_args(int argc,
+ 
+                 if (ebuf == NULL) {
+                     fprintf(stderr, "malloc failure processing -E flag.\n");
+-                    return (-1);
++                    return (NETSNMP_PARSE_ARGS_ERROR);
+                 }
+                 if (!snmp_hex_to_binary(&ebuf, &ebuf_len,
+ 					&eout_len, 1, optarg)) {
+                     fprintf(stderr, "Bad engine ID value after -E flag.\n");
+                     free(ebuf);
+-                    return (-1);
++                    return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+                 }
+                 if ((eout_len < 5) || (eout_len > 32)) {
+                     fprintf(stderr, "Invalid engine ID value after -E flag.\n");
+                     free(ebuf);
+-                    return (-1);
++                    return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+                 }
+                 session->contextEngineID = ebuf;
+                 session->contextEngineIDLen = eout_len;
+@@ -495,7 +495,7 @@ snmp_parse_args(int argc,
+ 		    sp++;
+ 		} else {
+ 		    fprintf(stderr, "malloc failure processing -u flag.\n");
+-		    return -1;
++		    return NETSNMP_PARSE_ARGS_ERROR;
+ 		}
+ 	    } else {
+ 		session->securityName = optarg;
+@@ -522,7 +522,7 @@ snmp_parse_args(int argc,
+                 fprintf(stderr,
+                         "Invalid security level specified after -l flag: %s\n",
+                         optarg);
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+ 
+             break;
+@@ -541,7 +541,7 @@ snmp_parse_args(int argc,
+                 fprintf(stderr,
+                         "Invalid authentication protocol specified after -a flag: %s\n",
+                         optarg);
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+             break;
+ 
+@@ -566,7 +566,7 @@ snmp_parse_args(int argc,
+                 fprintf(stderr,
+                       "Invalid privacy protocol specified after -x flag: %s\n",
+                         optarg);
+-                return (-1);
++                return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             }
+             break;
+ 
+@@ -578,7 +578,7 @@ snmp_parse_args(int argc,
+ 		    sp++;
+ 		} else {
+ 		    fprintf(stderr, "malloc failure processing -A flag.\n");
+-		    return -1;
++		    return NETSNMP_PARSE_ARGS_ERROR;
+ 		}
+ 	    } else {
+ 		Apsz = optarg;
+@@ -593,7 +593,7 @@ snmp_parse_args(int argc,
+ 		    sp++;
+ 		} else {
+ 		    fprintf(stderr, "malloc failure processing -X flag.\n");
+-		    return -1;
++		    return NETSNMP_PARSE_ARGS_ERROR;
+ 		}
+ 	    } else {
+ 		Xpsz = optarg;
+@@ -602,7 +602,7 @@ snmp_parse_args(int argc,
+ #endif                          /* SNMPV3_CMD_OPTIONS */
+ 
+         case '?':
+-            return (-1);
++            return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+             break;
+ 
+         default:
+@@ -653,7 +653,7 @@ snmp_parse_args(int argc,
+ 
+             default:
+                 snmp_log(LOG_ERR, "Can't determine a valid SNMP version for the session\n");
+-                return(-2);
++                return(NETSNMP_PARSE_ARGS_ERROR);
+             }
+         } else {
+ #ifndef NETSNMP_DISABLE_SNMPV1
+@@ -701,7 +701,7 @@ snmp_parse_args(int argc,
+             snmp_perror(argv[0]);
+             fprintf(stderr,
+                     "Error generating a key (Ku) from the supplied authentication pass phrase. \n");
+-            return (-2);
++            return (NETSNMP_PARSE_ARGS_ERROR);
+         }
+     }
+     if (Xpsz) {
+@@ -740,7 +740,7 @@ snmp_parse_args(int argc,
+             snmp_perror(argv[0]);
+             fprintf(stderr,
+                     "Error generating a key (Ku) from the supplied privacy pass phrase. \n");
+-            return (-2);
++            return (NETSNMP_PARSE_ARGS_ERROR);
+         }
+     }
+     /*
+@@ -748,7 +748,7 @@ snmp_parse_args(int argc,
+      */
+     if (optind == argc) {
+         fprintf(stderr, "No hostname specified.\n");
+-        return (-1);
++        return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+     }
+     session->peername = argv[optind++]; /* hostname */
+ 
+@@ -782,7 +782,7 @@ snmp_parse_args(int argc,
+                     session->community_len = 0;
+                 } else {
+                     fprintf(stderr, "No community name specified.\n");
+-                    return (-1);
++                    return (NETSNMP_PARSE_ARGS_ERROR_USAGE);
+                 }
+ 	    }
+ 	} else {

@@ -1,0 +1,51 @@
+555318 -  The snmpd reports a error message 'error on subcontainer '' insert (-1)' for alias interfaces
+
+Source: upstream, SVN rev. 18006
+
+Index: net-snmp/agent/mibgroup/etherlike-mib/dot3StatsTable/dot3StatsTable_data_access.c
+===================================================================
+--- net-snmp/agent/mibgroup/etherlike-mib/dot3StatsTable/dot3StatsTable_data_access.c	(revision 18005)
++++ net-snmp/agent/mibgroup/etherlike-mib/dot3StatsTable/dot3StatsTable_data_access.c	(working copy)
+@@ -317,7 +317,7 @@
+             dot3StatsTable_release_rowreq_ctx(rowreq_ctx);
+             continue;
+         }
+-        
++
+         rc = interface_ioctl_dot3stats_duplex_get(rowreq_ctx, fd, p->name);
+         if (rc < 0) {
+             DEBUGMSGTL(("access:dot3StatsTable", "error getting the duplex status for |%s| "
+@@ -329,7 +329,13 @@
+         /*
+          * insert into table container
+          */
+-        CONTAINER_INSERT(container, rowreq_ctx);
++        rc = CONTAINER_INSERT(container, rowreq_ctx);
++        if (rc < 0) {
++            DEBUGMSGTL(("access:dot3StatsTable", "error inserting |%s|", p->name));
++            dot3StatsTable_release_rowreq_ctx(rowreq_ctx);
++            continue;
++        }
++
+         ++count;
+     }
+ 
+Index: net-snmp/agent/mibgroup/rmon-mib/etherStatsTable/etherStatsTable_data_access.c
+===================================================================
+--- net-snmp/agent/mibgroup/rmon-mib/etherStatsTable/etherStatsTable_data_access.c	(revision 18005)
++++ net-snmp/agent/mibgroup/rmon-mib/etherStatsTable/etherStatsTable_data_access.c	(working copy)
+@@ -310,7 +310,13 @@
+         /*
+          * insert into table container
+          */
+-        CONTAINER_INSERT(container, rowreq_ctx);
++        rc = CONTAINER_INSERT(container, rowreq_ctx);
++        if (rc < 0) {
++            DEBUGMSGTL(("access:etherStatsTable", "error inserting |%s| ", p->name));
++            etherStatsTable_release_rowreq_ctx(rowreq_ctx);
++            continue;
++        }
++
+         ++count;
+     }
+ 
