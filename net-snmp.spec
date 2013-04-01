@@ -14,7 +14,7 @@
 Summary: A collection of SNMP protocol tools and libraries
 Name: net-snmp
 Version: 5.5
-Release: 27%{?dist}
+Release: 27%{?dist}.1
 Epoch: 1
 
 License: BSD
@@ -65,6 +65,8 @@ Patch27: net-snmp-5.5-ipv6-forwarding.patch
 Patch28: net-snmp-5.5-translate-unsigned-range.patch
 Patch29: net-snmp-5.5-mktemp-size.patch
 Patch30: net-snmp-5.5-gfs.patch
+Patch31: net-snmp-5.5-sysobjectid-truncation.patch
+Patch32: net-snmp-5.5-negative-stats.patch
 
 Requires(post): chkconfig
 Requires(preun): chkconfig
@@ -221,6 +223,8 @@ Net-SNMP toolkit library.
 %patch28 -p1 -b .translate-unsigned-range
 %patch29 -p1 -b .mktemp-size
 %patch30 -p1 -b .gfs
+%patch31 -p1 -b .sysobjectid
+%patch32 -p1 -b .negative-stats
 
 %build
 MIBS="host agentx smux \
@@ -477,6 +481,10 @@ rm -rf ${RPM_BUILD_ROOT}
 %{_datadir}/snmp/mibs/*
 
 %changelog
+* Thu Nov 11 2010 Jan Safranek <jsafrane@redhat.com> - 1:5.5-27.1
+- fixed truncation of sysObjectID (#652223)
+- fixed assertions in calculating of statistics in IF-MIB (#652551)
+
 * Wed Aug  4 2010 Jan Safranek <jsafrane@redhat.com> - 1:5.5-27
 - removed APSL 1.1 licensed files from source tarball (#619906)
 

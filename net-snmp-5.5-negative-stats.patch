@@ -1,0 +1,598 @@
+diff -up net-snmp-5.5/agent/mibgroup/if-mib/data_access/interface.c.negative-stats net-snmp-5.5/agent/mibgroup/if-mib/data_access/interface.c
+--- net-snmp-5.5/agent/mibgroup/if-mib/data_access/interface.c.negative-stats	2009-05-06 23:45:20.000000000 +0200
++++ net-snmp-5.5/agent/mibgroup/if-mib/data_access/interface.c	2010-11-11 12:57:36.486438910 +0100
+@@ -517,39 +517,78 @@ netsnmp_access_interface_entry_update_st
+         memcpy(prev_vals->old_stats, &prev_vals->stats, sizeof(new_vals->stats));
+     }
+ 
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.ibytes,
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.ibytes,
+                                        &new_vals->stats.ibytes,
+                                        &prev_vals->old_stats->ibytes,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.iucast,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding ifHCInOctets to 64bits\n"));
++
++        if (new_vals->ns_flags & NETSNMP_INTERFACE_FLAGS_CALCULATE_UCAST) {
++            if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.iall,
++                                           &new_vals->stats.iall,
++                                           &prev_vals->old_stats->iall,
++                                           &need_wrap_check))
++                NETSNMP_LOGONCE((LOG_ERR,
++                        "Error expanding packet count to 64bits\n"));
++        } else {
++            if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.iucast,
++                                           &new_vals->stats.iucast,
++                                           &prev_vals->old_stats->iucast,
++                                           &need_wrap_check))
++                NETSNMP_LOGONCE((LOG_ERR,
++                        "Error expanding ifHCInUcastPkts to 64bits\n"));
++        }
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.iucast,
+                                        &new_vals->stats.iucast,
+                                        &prev_vals->old_stats->iucast,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.imcast,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding ifHCInUcastPkts to 64bits\n"));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.imcast,
+                                        &new_vals->stats.imcast,
+                                        &prev_vals->old_stats->imcast,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.ibcast,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding ifHCInMulticastPkts to 64bits\n"));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.ibcast,
+                                        &new_vals->stats.ibcast,
+                                        &prev_vals->old_stats->ibcast,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.obytes,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding ifHCInBroadcastPkts to 64bits\n"));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.obytes,
+                                        &new_vals->stats.obytes,
+                                        &prev_vals->old_stats->obytes,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.oucast,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding ifHCOutOctets to 64bits\n"));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.oucast,
+                                        &new_vals->stats.oucast,
+                                        &prev_vals->old_stats->oucast,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.omcast,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding ifHCOutUcastPkts to 64bits\n"));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.omcast,
+                                        &new_vals->stats.omcast,
+                                        &prev_vals->old_stats->omcast,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.obcast,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding ifHCOutMulticastPkts to 64bits\n"));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.obcast,
+                                        &new_vals->stats.obcast,
+                                        &prev_vals->old_stats->obcast,
+-                                       &need_wrap_check);
+-    
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding ifHCOutBroadcastPkts to 64bits\n"));
++
+     /*
+      * Copy 32 bit counters
+      */
+@@ -581,6 +620,23 @@ netsnmp_access_interface_entry_update_st
+ }
+ 
+ /**
++ * Calculate stats
++ *
++ * @retval  0 : success
++ * @retval -1 : error
++ */
++int
++netsnmp_access_interface_entry_calculate_stats(netsnmp_interface_entry *entry)
++{
++    DEBUGMSGTL(("access:interface", "calculate_stats\n"));
++    if (entry->ns_flags & NETSNMP_INTERFACE_FLAGS_CALCULATE_UCAST) {
++        u64Subtract(&entry->stats.iall, &entry->stats.imcast,
++                &entry->stats.iucast);
++    }
++    return 0;
++}
++
++/**
+  * copy interface entry data (after checking for counter wraps)
+  *
+  * @retval -2 : malloc failed
+@@ -602,6 +658,7 @@ netsnmp_access_interface_entry_copy(nets
+      * update stats
+      */
+     netsnmp_access_interface_entry_update_stats(lhs, rhs);
++    netsnmp_access_interface_entry_calculate_stats(lhs);
+ 
+     /*
+      * update data
+diff -up net-snmp-5.5/agent/mibgroup/if-mib/data_access/interface_linux.c.negative-stats net-snmp-5.5/agent/mibgroup/if-mib/data_access/interface_linux.c
+--- net-snmp-5.5/agent/mibgroup/if-mib/data_access/interface_linux.c.negative-stats	2010-11-11 12:57:34.168567996 +0100
++++ net-snmp-5.5/agent/mibgroup/if-mib/data_access/interface_linux.c	2010-11-11 12:57:36.429442087 +0100
+@@ -430,16 +430,15 @@ _parse_stats(netsnmp_interface_entry *en
+      * subtract out multicast packets from rec_pkt before
+      * we store it as unicast counter.
+      */
+-    rec_pkt -= rec_mcast;
+-
++    entry->ns_flags |= NETSNMP_INTERFACE_FLAGS_CALCULATE_UCAST;
+     entry->stats.ibytes.low = rec_oct & 0xffffffff;
+-    entry->stats.iucast.low = rec_pkt & 0xffffffff;
++    entry->stats.iall.low = rec_pkt & 0xffffffff;
+     entry->stats.imcast.low = rec_mcast & 0xffffffff;
+     entry->stats.obytes.low = snd_oct & 0xffffffff;
+     entry->stats.oucast.low = snd_pkt & 0xffffffff;
+ #ifdef SCNuMAX   /* XXX - should be flag for 64-bit variables */
+     entry->stats.ibytes.high = rec_oct >> 32;
+-    entry->stats.iucast.high = rec_pkt >> 32;
++    entry->stats.iall.high = rec_pkt >> 32;
+     entry->stats.imcast.high = rec_mcast >> 32;
+     entry->stats.obytes.high = snd_oct >> 32;
+     entry->stats.oucast.high = snd_pkt >> 32;
+diff -up net-snmp-5.5/agent/mibgroup/ip-mib/data_access/systemstats_common.c.negative-stats net-snmp-5.5/agent/mibgroup/ip-mib/data_access/systemstats_common.c
+--- net-snmp-5.5/agent/mibgroup/ip-mib/data_access/systemstats_common.c.negative-stats	2010-11-11 12:57:36.043463581 +0100
++++ net-snmp-5.5/agent/mibgroup/ip-mib/data_access/systemstats_common.c	2010-11-11 12:57:36.197455005 +0100
+@@ -163,7 +163,8 @@ netsnmp_access_systemstats_entry_get_by_
+ /**
+  */
+ netsnmp_systemstats_entry *
+-netsnmp_access_systemstats_entry_create(int version, int if_index)
++netsnmp_access_systemstats_entry_create(int version, int if_index,
++        const char *tableName)
+ {
+     netsnmp_systemstats_entry *entry =
+         SNMP_MALLOC_TYPEDEF(netsnmp_systemstats_entry);
+@@ -177,7 +178,7 @@ netsnmp_access_systemstats_entry_create(
+     entry->oid_index.oids = entry->index;
+     entry->index[0] = version;
+     entry->index[1] = if_index;
+-
++    entry->tableName = tableName;
+     return entry;
+ }
+ 
+@@ -328,90 +329,173 @@ netsnmp_access_systemstats_entry_update_
+         /*
+          * update 64bit counters
+          */
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCInNoRoutes,
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCInNoRoutes,
+                                        &new_vals->stats.HCInNoRoutes,
+                                        &prev_vals->old_stats->HCInNoRoutes,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutNoRoutes,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCInNoRoutes to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutNoRoutes,
+                                        &new_vals->stats.HCOutNoRoutes,
+                                        &prev_vals->old_stats->HCOutNoRoutes,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutDiscards,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCOutNoRoutes to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutDiscards,
+                                        &new_vals->stats.HCOutDiscards,
+                                        &prev_vals->old_stats->HCOutDiscards,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutFragReqds,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCOutDiscards to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutFragReqds,
+                                        &new_vals->stats.HCOutFragReqds,
+                                        &prev_vals->old_stats->HCOutFragReqds,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutFragOKs,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCOutFragReqds to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutFragOKs,
+                                        &new_vals->stats.HCOutFragOKs,
+                                        &prev_vals->old_stats->HCOutFragOKs,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutFragFails,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCOutFragOKs to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutFragFails,
+                                        &new_vals->stats.HCOutFragFails,
+                                        &prev_vals->old_stats->HCOutFragFails,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutFragCreates,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCOutFragFails to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutFragCreates,
+                                        &new_vals->stats.HCOutFragCreates,
+                                        &prev_vals->old_stats->HCOutFragCreates,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCInReceives,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCOutFragCreates to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCInReceives,
+                                        &new_vals->stats.HCInReceives,
+                                        &prev_vals->old_stats->HCInReceives,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCInOctets,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCInReceives to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCInOctets,
+                                        &new_vals->stats.HCInOctets,
+                                        &prev_vals->old_stats->HCInOctets,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCInForwDatagrams,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCInOctets to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCInForwDatagrams,
+                                        &new_vals->stats.HCInForwDatagrams,
+                                        &prev_vals->old_stats->HCInForwDatagrams,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCInDelivers,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCInForwDatagrams to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCInDelivers,
+                                        &new_vals->stats.HCInDelivers,
+                                        &prev_vals->old_stats->HCInDelivers,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutRequests,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCInDelivers to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutRequests,
+                                        &new_vals->stats.HCOutRequests,
+                                        &prev_vals->old_stats->HCOutRequests,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutForwDatagrams,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCOutRequests to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutForwDatagrams,
+                                        &new_vals->stats.HCOutForwDatagrams,
+                                        &prev_vals->old_stats->HCOutForwDatagrams,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutTransmits,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCOutForwDatagrams to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutTransmits,
+                                        &new_vals->stats.HCOutTransmits,
+                                        &prev_vals->old_stats->HCOutTransmits,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutOctets,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCOutTransmits to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutOctets,
+                                        &new_vals->stats.HCOutOctets,
+                                        &prev_vals->old_stats->HCOutOctets,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCInMcastPkts,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCOutOctets to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCInMcastPkts,
+                                        &new_vals->stats.HCInMcastPkts,
+                                        &prev_vals->old_stats->HCInMcastPkts,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCInMcastOctets,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCInMcastPkts to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCInMcastOctets,
+                                        &new_vals->stats.HCInMcastOctets,
+                                        &prev_vals->old_stats->HCInMcastOctets,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutMcastPkts,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCInMcastOctets to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutMcastPkts,
+                                        &new_vals->stats.HCOutMcastPkts,
+                                        &prev_vals->old_stats->HCOutMcastPkts,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutMcastOctets,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCOutMcastPkts to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutMcastOctets,
+                                        &new_vals->stats.HCOutMcastOctets,
+                                        &prev_vals->old_stats->HCOutMcastOctets,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCInBcastPkts,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCOutMcastOctets to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCInBcastPkts,
+                                        &new_vals->stats.HCInBcastPkts,
+                                        &prev_vals->old_stats->HCInBcastPkts,
+-                                       &need_wrap_check);
+-        netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutBcastPkts,
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCInBcastPkts to 64bits in %s\n",
++                    prev_vals->tableName));
++
++        if (0 != netsnmp_c64_check32_and_update(&prev_vals->stats.HCOutBcastPkts,
+                                        &new_vals->stats.HCOutBcastPkts,
+                                        &prev_vals->old_stats->HCOutBcastPkts,
+-                                       &need_wrap_check);
++                                       &need_wrap_check))
++            NETSNMP_LOGONCE((LOG_ERR,
++                    "Error expanding HCOutBcastPkts to 64bits in %s\n",
++                    prev_vals->tableName));
+     }
+ 
+     /*
+diff -up net-snmp-5.5/agent/mibgroup/ip-mib/data_access/systemstats_linux.c.negative-stats net-snmp-5.5/agent/mibgroup/ip-mib/data_access/systemstats_linux.c
+--- net-snmp-5.5/agent/mibgroup/ip-mib/data_access/systemstats_linux.c.negative-stats	2009-07-16 14:38:15.000000000 +0200
++++ net-snmp-5.5/agent/mibgroup/ip-mib/data_access/systemstats_linux.c	2010-11-11 12:57:36.296449490 +0100
+@@ -160,7 +160,8 @@ _systemstats_v4(netsnmp_container* conta
+         while (*stats == ' ') /* skip spaces before stats */
+             stats++;
+ 
+-        entry = netsnmp_access_systemstats_entry_create(1, 0);
++        entry = netsnmp_access_systemstats_entry_create(1, 0,
++                    "ipSystemStatsTable.ipv4");
+         if(NULL == entry) {
+             netsnmp_access_systemstats_container_free(container,
+                                                       NETSNMP_ACCESS_SYSTEMSTATS_FREE_NOFLAGS);
+@@ -533,7 +534,8 @@ _systemstats_v6_load_systemstats(netsnmp
+     static int      warned_open = 0;
+     int rc = 0;
+     
+-    entry = netsnmp_access_systemstats_entry_create(2, 0);
++    entry = netsnmp_access_systemstats_entry_create(2, 0,
++            "ipSystemStatsTable.ipv6");
+     if(NULL == entry)
+         return -3;
+     
+@@ -644,7 +646,8 @@ _systemstats_v6_load_ifstats(netsnmp_con
+             scan_val = strtoull(scan_str, NULL, 0);
+         }
+         
+-        entry = netsnmp_access_systemstats_entry_create(2, scan_val);
++        entry = netsnmp_access_systemstats_entry_create(2, scan_val,
++                "ipIfStatsTable.ipv6");
+         if(NULL == entry) {
+             fclose(devin);
+             closedir(dev_snmp6_dir);
+diff -up net-snmp-5.5/agent/mibgroup/ip-mib/data_access/systemstats_solaris2.c.negative-stats net-snmp-5.5/agent/mibgroup/ip-mib/data_access/systemstats_solaris2.c
+--- net-snmp-5.5/agent/mibgroup/ip-mib/data_access/systemstats_solaris2.c.negative-stats	2009-02-05 23:56:23.000000000 +0100
++++ net-snmp-5.5/agent/mibgroup/ip-mib/data_access/systemstats_solaris2.c	2010-11-11 12:57:36.255451777 +0100
+@@ -129,7 +129,8 @@ _insert_entry(netsnmp_container *contain
+     int i;
+     
+     netsnmp_systemstats_entry *ep =
+-        netsnmp_access_systemstats_entry_create(ipe->ipIfStatsIPVersion, 0); 
++        netsnmp_access_systemstats_entry_create(ipe->ipIfStatsIPVersion, 0,
++                "ipSystemStatsTable"); 
+ 
+     DEBUGMSGTL(("access:systemstats:arch", "insert entry for v%d\n",
+                 ipe->ipIfStatsIPVersion)); 
+diff -up net-snmp-5.5/agent/mibgroup/sctp-mib/sctpScalars_common.c.negative-stats net-snmp-5.5/agent/mibgroup/sctp-mib/sctpScalars_common.c
+--- net-snmp-5.5/agent/mibgroup/sctp-mib/sctpScalars_common.c.negative-stats	2008-08-12 09:27:27.000000000 +0200
++++ net-snmp-5.5/agent/mibgroup/sctp-mib/sctpScalars_common.c	2010-11-11 12:57:36.346446712 +0100
+@@ -55,46 +55,75 @@ netsnmp_access_sctp_stats_load(netsnmp_c
+     /*
+      * Update 64 bit counters
+      */
+-    netsnmp_c64_check32_and_update(&sctp_stats.out_ctrl_chunks,
++    if (0 != netsnmp_c64_check32_and_update(&sctp_stats.out_ctrl_chunks,
+                                    &new_stats.out_ctrl_chunks,
+                                    &prev_sctp_stats.out_ctrl_chunks,
+-                                   &need_wrap_check);
+-    netsnmp_c64_check32_and_update(&sctp_stats.out_order_chunks,
++                                   &need_wrap_check))
++        NETSNMP_LOGONCE((LOG_ERR,
++                "SCTP: Error expanding sctpOutCtrlChunks to 64bits\n"));
++
++    if (0 != netsnmp_c64_check32_and_update(&sctp_stats.out_order_chunks,
+                                    &new_stats.out_order_chunks,
+                                    &prev_sctp_stats.out_order_chunks,
+-                                   &need_wrap_check);
+-    netsnmp_c64_check32_and_update(&sctp_stats.out_unorder_chunks,
++                                   &need_wrap_check))
++        NETSNMP_LOGONCE((LOG_ERR,
++                "SCTP: Error expanding sctpOutOrderChunks to 64bits\n"));
++
++    if (0 != netsnmp_c64_check32_and_update(&sctp_stats.out_unorder_chunks,
+                                    &new_stats.out_unorder_chunks,
+                                    &prev_sctp_stats.out_unorder_chunks,
+-                                   &need_wrap_check);
+-    netsnmp_c64_check32_and_update(&sctp_stats.in_ctrl_chunks,
++                                   &need_wrap_check))
++        NETSNMP_LOGONCE((LOG_ERR,
++                "SCTP: Error expanding sctpOutUnorderChunks to 64bits\n"));
++
++    if (0 != netsnmp_c64_check32_and_update(&sctp_stats.in_ctrl_chunks,
+                                    &new_stats.in_ctrl_chunks,
+                                    &prev_sctp_stats.in_ctrl_chunks,
+-                                   &need_wrap_check);
+-    netsnmp_c64_check32_and_update(&sctp_stats.in_order_chunks,
++                                   &need_wrap_check))
++        NETSNMP_LOGONCE((LOG_ERR,
++                "SCTP: Error expanding sctpInCtrlChunks to 64bits\n"));
++
++    if (0 != netsnmp_c64_check32_and_update(&sctp_stats.in_order_chunks,
+                                    &new_stats.in_order_chunks,
+                                    &prev_sctp_stats.in_order_chunks,
+-                                   &need_wrap_check);
+-    netsnmp_c64_check32_and_update(&sctp_stats.in_unorder_chunks,
++                                   &need_wrap_check))
++        NETSNMP_LOGONCE((LOG_ERR,
++                "SCTP: Error expanding sctpInOrderChunks to 64bits\n"));
++
++    if (0 != netsnmp_c64_check32_and_update(&sctp_stats.in_unorder_chunks,
+                                    &new_stats.in_unorder_chunks,
+                                    &prev_sctp_stats.in_unorder_chunks,
+-                                   &need_wrap_check);
+-    netsnmp_c64_check32_and_update(&sctp_stats.frag_usr_msgs,
++                                   &need_wrap_check))
++        NETSNMP_LOGONCE((LOG_ERR,
++                "SCTP: Error expanding sctpInUnorderChunks to 64bits\n"));
++
++    if (0 != netsnmp_c64_check32_and_update(&sctp_stats.frag_usr_msgs,
+                                    &new_stats.frag_usr_msgs,
+                                    &prev_sctp_stats.frag_usr_msgs,
+-                                   &need_wrap_check);
+-    netsnmp_c64_check32_and_update(&sctp_stats.reasm_usr_msgs,
++                                   &need_wrap_check))
++        NETSNMP_LOGONCE((LOG_ERR,
++                "SCTP: Error expanding sctpFragUsrMsgs to 64bits\n"));
++
++    if (0 != netsnmp_c64_check32_and_update(&sctp_stats.reasm_usr_msgs,
+                                    &new_stats.reasm_usr_msgs,
+                                    &prev_sctp_stats.reasm_usr_msgs,
+-                                   &need_wrap_check);
+-    netsnmp_c64_check32_and_update(&sctp_stats.out_sctp_packs,
++                                   &need_wrap_check))
++        NETSNMP_LOGONCE((LOG_ERR,
++                "SCTP: Error expanding sctpReasmUsrMsgs to 64bits\n"));
++
++    if (0 != netsnmp_c64_check32_and_update(&sctp_stats.out_sctp_packs,
+                                    &new_stats.out_sctp_packs,
+                                    &prev_sctp_stats.out_sctp_packs,
+-                                   &need_wrap_check);
+-    netsnmp_c64_check32_and_update(&sctp_stats.in_sctp_packs,
++                                   &need_wrap_check))
++        NETSNMP_LOGONCE((LOG_ERR,
++                "SCTP: Error expanding sctpOutSCTPPacks to 64bits\n"));
++
++    if (0 != netsnmp_c64_check32_and_update(&sctp_stats.in_sctp_packs,
+                                    &new_stats.in_sctp_packs,
+                                    &prev_sctp_stats.in_sctp_packs,
+-                                   &need_wrap_check);
++                                   &need_wrap_check))
++        NETSNMP_LOGONCE((LOG_ERR,
++                "SCTP: Error expanding sctpInSCTPPacks to 64bits\n"));
+ 
+     /*
+      * Update prev_stats for next computation.
+diff -up net-snmp-5.5/include/net-snmp/data_access/interface.h.negative-stats net-snmp-5.5/include/net-snmp/data_access/interface.h
+--- net-snmp-5.5/include/net-snmp/data_access/interface.h.negative-stats	2010-11-11 12:57:34.167568051 +0100
++++ net-snmp-5.5/include/net-snmp/data_access/interface.h	2010-11-11 12:57:36.387444423 +0100
+@@ -34,6 +34,20 @@ extern          "C" {
+ #define NETSNMP_INTERFACE_FLAGS_HAS_V6_REACHABLE        0x00040000
+ #define NETSNMP_INTERFACE_FLAGS_HAS_V6_IFID             0x00080000
+ #define NETSNMP_INTERFACE_FLAGS_HAS_V6_FORWARDING       0x00100000
++/* Some platforms, e.g.Linux, do not provide standalone counter
++ * for incoming unicast packets - they provide counter of all packets
++ * + separate counter for the multicast ones.
++ * That means the counter of all packets must watched and checked
++ * for overflows to reconstruct its 64-bit value (i.e. as usual
++ * for counter of unicast packets), and after its expansion to 64-bits,
++ * nr.of multicast packets must be substracted to get nr. of unicast
++ * packets.
++ * This flag marks stats of such platforms. Nr. of all incoming packets,
++ * provided by the platform, must be stored in
++ * netsnmp_interface_stats.iall and netsnmp_interface_stats.iucast will
++ * be automatically calculated later.
++ */
++#define NETSNMP_INTERFACE_FLAGS_CALCULATE_UCAST         0x00200000
+ 
+ /*************************************************************
+  * constants for enums for the MIB node
+@@ -93,6 +107,11 @@ typedef struct netsnmp_interface_stats_s
+      */
+    /** input */
+     struct counter64 ibytes;
++    /*
++     * nr. of all packets (to calculate iucast, when underlying platform does
++     * not provide it)
++     */
++    struct counter64 iall;
+     struct counter64 iucast;
+     struct counter64 imcast;
+     struct counter64 ibcast;
+diff -up net-snmp-5.5/include/net-snmp/data_access/systemstats.h.negative-stats net-snmp-5.5/include/net-snmp/data_access/systemstats.h
+--- net-snmp-5.5/include/net-snmp/data_access/systemstats.h.negative-stats	2008-10-15 14:57:09.000000000 +0200
++++ net-snmp-5.5/include/net-snmp/data_access/systemstats.h	2010-11-11 12:57:36.145457900 +0100
+@@ -36,6 +36,11 @@ typedef struct netsnmp_systemstats_s {
+     */
+    netsnmp_ipstats stats;
+ 
++   /*
++    * for logging
++    */
++   const char* tableName;
++   
+    /** old_stats is used in netsnmp_access_interface_entry_update_stats */
+    netsnmp_ipstats *old_stats;
+ 
+@@ -74,7 +79,8 @@ void netsnmp_access_systemstats_containe
+  * create/free an entry
+  */
+ netsnmp_systemstats_entry *
+-netsnmp_access_systemstats_entry_create(int version, int if_index);
++netsnmp_access_systemstats_entry_create(int version, int if_index,
++            const char* tableName);
+ 
+ void netsnmp_access_systemstats_entry_free(netsnmp_systemstats_entry * entry);
+ 
